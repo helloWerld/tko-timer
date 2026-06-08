@@ -67,12 +67,18 @@ a sample. Each slider goes up to **125%** with a magnetic detent at 100% (the
 handle sticks to a marker line); above 100% a clipping warning appears, since
 amplifying past unity gain can distort.
 
-### Playing alongside background music — on hold
+### Playing alongside background music
 
-An earlier attempt set `navigator.audioSession.type = "ambient"` so cues would
-mix with music from another app instead of pausing it. On browsers that support
-that API it silenced the spoken cues, so it's been removed in favor of cues that
-reliably play.
+On unlock we set `navigator.audioSession.type = "transient"` (see
+`enableDucking` in `lib/audio.ts`). This is the "notification ping" mode: the OS
+briefly **ducks** other apps' audio (e.g. a music player) while our cues play,
+then restores it — so the cues stay audible over your music instead of being
+drowned out. It's feature-detected and a harmless no-op where the Audio Session
+API is unavailable (iOS Safari 16.4+ and some Chromium support it).
+
+An earlier attempt used `"ambient"`, which is the opposite lever — it marks our
+audio as incidental background and lets the system quiet *us*, which silenced the
+spoken cues.
 
 ## Exercise library (no database)
 
