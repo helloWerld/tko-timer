@@ -13,13 +13,16 @@
 let ctx: AudioContext | null = null;
 let beepGain: GainNode | null = null;
 let voiceGain: GainNode | null = null;
+let limiter: DynamicsCompressorNode | null = null;
 
-// Volumes, 0..MAX_VOLUME. Beeps default loud (they were quieter than music
-// players). Going above 1.0 amplifies via the gain node and may clip.
-export const MAX_VOLUME = 1.25;
+// Volumes, 0..MAX_VOLUME. Cues default above unity since they tend to be quieter
+// than music players. A master limiter (see graph()) tames peaks, so the extra
+// gain reads as louder rather than hard-clipping — the ceiling can sit well
+// above 1.0.
+export const MAX_VOLUME = 2;
 
-let beepVolume = 1;
-let voiceVolume = 1;
+let beepVolume = 1.25;
+let voiceVolume = 1.25;
 
 const VOL_KEY = "pulsefit.volume.v1";
 
@@ -68,15 +71,28 @@ function getCtx(): AudioContext | null {
 function graph(): AudioContext | null {
   const c = getCtx();
   if (!c) return null;
+  if (!limiter) {
+    // Master limiter on the output. Lets us push the cue gains well above unity
+    // (so they cut through loud background music) while clamping peaks instead
+    // of hard-clipping them into crackle. Matters most on Android, where the OS
+    // won't duck the music for us.
+    limiter = c.createDynamicsCompressor();
+    limiter.threshold.value = -6;
+    limiter.knee.value = 0;
+    limiter.ratio.value = 20;
+    limiter.attack.value = 0.003;
+    limiter.release.value = 0.25;
+    limiter.connect(c.destination);
+  }
   if (!beepGain) {
     beepGain = c.createGain();
     beepGain.gain.value = beepVolume;
-    beepGain.connect(c.destination);
+    beepGain.connect(limiter);
   }
   if (!voiceGain) {
     voiceGain = c.createGain();
     voiceGain.gain.value = voiceVolume;
-    voiceGain.connect(c.destination);
+    voiceGain.connect(limiter);
   }
   return c;
 }
@@ -226,8 +242,28 @@ const VOICE_FILES = {
 
 type VoiceKey = keyof typeof VOICE_FILES;
 
+// Per-clip "ReplayGain". The recorded clips vary by ~9 dB in measured RMS, so a
+// fixed gain per clip normalizes them toward the loudest one (halfway, ~-10 dBFS)
+// for a consistent perceived level. Applied on the decoded-buffer path via a gain
+// node; the master limiter then holds the boosted peaks. Capped at 2x so the
+// quietest clips don't slam the limiter hard enough to pump.
+const VOICE_GAIN: Record<VoiceKey, number> = {
+  halfway: 1.0, // -10.1 dBFS — reference (loudest clip)
+  getReady: 1.66, // -14.5 dBFS  +4.4 dB
+  restEnd: 1.74, // -14.9 dBFS  +4.8 dB
+  prepGo: 2.0, // -16.7 dBFS  +6.6 dB (capped)
+  toRest: 2.0, // -17.2 dBFS  +7.1 dB (capped)
+  toWork: 2.0, // -18.9 dBFS  +8.8 dB (capped)
+};
+
 const voiceBuffers: Partial<Record<VoiceKey, AudioBuffer>> = {};
 let voiceLoadStarted = false;
+
+// Currently-sounding voice playback, so a pause can cut a clip off mid-word and
+// a resume can replay the clip it interrupted.
+const activeVoiceSources = new Set<AudioBufferSourceNode>();
+let currentVoiceKey: VoiceKey | null = null;
+let interruptedVoiceKey: VoiceKey | null = null;
 
 async function loadVoiceBuffers(): Promise<void> {
   const c = graph();
@@ -291,18 +327,31 @@ export function unlockVoice(): void {
 // apart, so a short window is safe.
 const lastVoiceAt: Partial<Record<VoiceKey, number>> = {};
 
-function playVoice(key: VoiceKey) {
-  const now = Date.now();
-  if (lastVoiceAt[key] && now - lastVoiceAt[key]! < 250) return;
-  lastVoiceAt[key] = now;
+// Actually start a clip. Tracks the playback so a pause can stop it. No dedup
+// guard here, so a resume can replay a clip even if it's the same one that just
+// fired (playVoice adds the guard for the normal cue path).
+function startVoice(key: VoiceKey) {
+  currentVoiceKey = key;
+  // A fresh cue supersedes any clip a pause was holding to replay.
+  interruptedVoiceKey = null;
 
   const c = graph();
   const buffer = voiceBuffers[key];
-  // Preferred path: decoded buffer through the voice gain node.
+  // Preferred path: decoded buffer through its per-clip normalization gain, then
+  // the voice gain node (and on to the master limiter).
   if (c && voiceGain && buffer) {
     const src = c.createBufferSource();
     src.buffer = buffer;
-    src.connect(voiceGain);
+    const norm = c.createGain();
+    norm.gain.value = VOICE_GAIN[key];
+    src.connect(norm).connect(voiceGain);
+    activeVoiceSources.add(src);
+    src.onended = () => {
+      activeVoiceSources.delete(src);
+      if (currentVoiceKey === key && activeVoiceSources.size === 0) {
+        currentVoiceKey = null;
+      }
+    };
     src.start();
     return;
   }
@@ -312,10 +361,55 @@ function playVoice(key: VoiceKey) {
   try {
     el.volume = Math.min(1, voiceVolume);
     el.currentTime = 0;
+    el.onended = () => {
+      if (currentVoiceKey === key) currentVoiceKey = null;
+    };
     void el.play();
   } catch {
     /* ignore */
   }
+}
+
+function playVoice(key: VoiceKey) {
+  const now = Date.now();
+  if (lastVoiceAt[key] && now - lastVoiceAt[key]! < 250) return;
+  lastVoiceAt[key] = now;
+  startVoice(key);
+}
+
+/**
+ * Pause: silence any voice clip mid-playback and remember it, so a later resume
+ * can replay it from the start. Beeps are too short (≤0.45s) to be worth stopping.
+ */
+export function pauseVoice(): void {
+  interruptedVoiceKey = currentVoiceKey;
+  activeVoiceSources.forEach((src) => {
+    try {
+      src.onended = null;
+      src.stop();
+    } catch {
+      /* already stopped */
+    }
+  });
+  activeVoiceSources.clear();
+  (Object.values(voiceEls) as HTMLAudioElement[]).forEach((el) => {
+    if (el && !el.paused) {
+      try {
+        el.pause();
+        el.currentTime = 0;
+      } catch {
+        /* ignore */
+      }
+    }
+  });
+  currentVoiceKey = null;
+}
+
+/** Resume: replay the clip a pause cut off, from the start (if there was one). */
+export function resumeVoice(): void {
+  const key = interruptedVoiceKey;
+  interruptedVoiceKey = null;
+  if (key) startVoice(key);
 }
 
 /** "Get ready" — played at the start of the prep / Get Ready screen. */

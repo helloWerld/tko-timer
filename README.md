@@ -54,9 +54,15 @@ Both modes end with a **finish fanfare**.
 ### How it's wired
 
 All audio runs through one Web Audio context with two master gain nodes — one
-for beeps, one for voice (`lib/audio.ts`). Beeps are oscillator tones. The spoken
-clips are decoded into Web Audio buffers and played through the voice gain node,
-with an HTML `<audio>` fallback for the brief window before they finish decoding.
+for beeps, one for voice — feeding a shared master **limiter** before the output
+(`lib/audio.ts`). The limiter lets the cue volumes push past unity (to cut
+through loud background music) while clamping peaks instead of hard-clipping.
+Beeps are oscillator tones. The spoken clips are decoded into Web Audio buffers
+and played through a **per-clip normalization gain** (`VOICE_GAIN`, a
+ReplayGain-style table that evens out the ~9 dB loudness spread between the
+recordings) and then the voice gain node, with an HTML `<audio>` fallback for the
+brief window before they finish decoding. The fallback can't boost above 1.0, so
+normalization applies on the decoded-buffer path only.
 
 ### Volume
 

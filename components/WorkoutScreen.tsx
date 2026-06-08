@@ -21,9 +21,11 @@ import {
   halfwayCue,
   halfwayVoice,
   longGoBeep,
+  pauseVoice,
   prepGoVoice,
   restCue,
   restEndVoice,
+  resumeVoice,
   setBeepVolume,
   setVoiceVolume,
   stretchCue,
@@ -201,15 +203,18 @@ export default function WorkoutScreen({
 
   const togglePause = useCallback(() => {
     void unlockAudio();
-    setRunning((r) => {
-      const next = !r;
-      if (next) {
-        // Resuming: rebase the start time so `remaining` is preserved.
-        const s = steps[stepIndex];
-        if (s) stepStartRef.current = performance.now() - (s.seconds - remaining) * 1000;
-      }
-      return next;
-    });
+    const next = !runningRef.current;
+    if (next) {
+      // Resuming: rebase the start time so `remaining` is preserved, then replay
+      // whatever voice cue the pause cut off.
+      const s = steps[stepIndex];
+      if (s) stepStartRef.current = performance.now() - (s.seconds - remaining) * 1000;
+      resumeVoice();
+    } else {
+      // Pausing: stop the clock and cut off any in-progress voice cue.
+      pauseVoice();
+    }
+    setRunning(next);
   }, [remaining, stepIndex, steps]);
 
   const skip = useCallback(() => advance(), [advance]);

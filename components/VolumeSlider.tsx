@@ -22,7 +22,9 @@ export default function VolumeSlider({
   onTest: () => void;
 }) {
   const pct = Math.round(value * 100);
-  const clipping = value > 1.0001;
+  // The master limiter keeps moderate boosts clean; only warn once it's pushed
+  // hard enough that limiting starts to audibly pump.
+  const clipping = value > 1.6;
 
   const handleChange = (rawPct: number) => {
     // Magnetic detent: snap to exactly 100% within the snap zone.
@@ -75,7 +77,7 @@ export default function VolumeSlider({
       {clipping && (
         <p className="mt-1.5 flex items-center gap-1 text-[11px] font-semibold text-gold">
           <TriangleAlert className="h-3.5 w-3.5" />
-          Above 100% — may distort or clip
+          Strongly boosted — may sound pumped
         </p>
       )}
     </div>
