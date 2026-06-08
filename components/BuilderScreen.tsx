@@ -1,9 +1,18 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { ArrowRight, Settings, Volume2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { ArrowRight, Settings } from "lucide-react";
 import { FORMATS, GOALS, getFormat, scaledIntervals } from "@/lib/formats";
-import { testVoice } from "@/lib/audio";
+import {
+  getVolumes,
+  preloadVoice,
+  setBeepVolume,
+  setVoiceVolume,
+  testBeep,
+  testVoice,
+} from "@/lib/audio";
+import VolumeSlider from "./VolumeSlider";
+import ThemeToggle from "./ThemeToggle";
 import type {
   Difficulty,
   Goal,
@@ -53,6 +62,17 @@ export default function BuilderScreen({
   const [includeCooldown, setIncludeCooldown] = useState<boolean>(
     initial?.includeCooldown ?? true,
   );
+  const [beepVol, setBeepVol] = useState(1);
+  const [voiceVol, setVoiceVol] = useState(1);
+
+  // Sync sliders with persisted volumes and start decoding the voice clips so
+  // they're ready (and the test buttons use the real playback path).
+  useEffect(() => {
+    const v = getVolumes();
+    setBeepVol(v.beep);
+    setVoiceVol(v.voice);
+    preloadVoice();
+  }, []);
 
   const preview = useMemo(() => {
     const fmt = getFormat(formatId);
@@ -64,21 +84,24 @@ export default function BuilderScreen({
       <header className="flex items-start justify-between pt-2">
         <div>
           <h1 className="text-4xl font-black tracking-tight">
-            <span className="bg-gradient-to-r from-orange-400 via-pink-500 to-violet-500 bg-clip-text text-transparent">
-              PulseFit
+            <span className="brand-text">
+              TKO Timer
             </span>
           </h1>
-          <p className="mt-1 text-sm text-white/50">
-            Build it. Preview it. Crush it.
+          <p className="mt-1 text-sm text-ink/50">
+            Build it. Preview it. Knock it out.
           </p>
         </div>
-        <button
-          onClick={onOpenSettings}
-          aria-label="Exercise library settings"
-          className="mt-1 flex h-10 w-10 items-center justify-center rounded-full border border-white/15 text-white/70 transition hover:border-white/40 hover:text-white"
-        >
-          <Settings className="h-5 w-5" />
-        </button>
+        <div className="mt-1 flex items-center gap-2">
+          <ThemeToggle />
+          <button
+            onClick={onOpenSettings}
+            aria-label="Exercise library settings"
+            className="flex h-10 w-10 items-center justify-center rounded-full border border-ink/15 text-ink/70 transition hover:border-ink/40 hover:text-ink"
+          >
+            <Settings className="h-5 w-5" />
+          </button>
+        </div>
       </header>
 
       <Section label="Goal" step={1}>
@@ -89,9 +112,9 @@ export default function BuilderScreen({
               active={goal === g.id}
               onClick={() => setGoal(g.id)}
             >
-              <g.icon className="h-6 w-6 text-pink-400" />
+              <g.icon className="h-6 w-6 text-accent" />
               <span className="font-bold leading-tight">{g.name}</span>
-              <span className="text-[11px] font-normal text-white/40">
+              <span className="text-[11px] font-normal text-ink/40">
                 {g.desc}
               </span>
             </OptionCard>
@@ -107,15 +130,15 @@ export default function BuilderScreen({
               onClick={() => setFormatId(f.id)}
               className={`flex items-center justify-between rounded-2xl border px-4 py-3.5 text-left transition ${
                 formatId === f.id
-                  ? "border-pink-500 bg-pink-500/10"
-                  : "border-white/10 bg-white/[0.03] hover:border-white/25"
+                  ? "border-accent bg-accent/10"
+                  : "border-ink/10 bg-ink/[0.03] hover:border-ink/25"
               }`}
             >
               <span>
                 <span className="block font-bold">{f.name}</span>
-                <span className="block text-xs text-white/45">{f.blurb}</span>
+                <span className="block text-xs text-ink/45">{f.blurb}</span>
               </span>
-              <span className="text-xs font-semibold text-white/40">
+              <span className="text-xs font-semibold text-ink/40">
                 {f.exercisesPerRound} moves
               </span>
             </button>
@@ -144,12 +167,12 @@ export default function BuilderScreen({
       </Section>
 
       <Section label="Duration" step={5}>
-        <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-4">
+        <div className="rounded-2xl border border-ink/10 bg-ink/[0.03] px-4 py-4">
           <div className="flex items-baseline justify-between">
-            <span className="text-sm text-white/50">Target length</span>
+            <span className="text-sm text-ink/50">Target length</span>
             <span className="text-2xl font-black">
               {targetMinutes}
-              <span className="ml-1 text-sm font-semibold text-white/40">
+              <span className="ml-1 text-sm font-semibold text-ink/40">
                 min
               </span>
             </span>
@@ -161,9 +184,9 @@ export default function BuilderScreen({
             step={1}
             value={targetMinutes}
             onChange={(e) => setTargetMinutes(Number(e.target.value))}
-            className="mt-3 w-full accent-pink-500"
+            className="mt-3 w-full accent-[rgb(var(--accent-rgb))]"
           />
-          <p className="mt-3 text-xs text-white/40">
+          <p className="mt-3 text-xs text-ink/40">
             ≈ {preview.work}s work / {preview.rest}s rest per move
             {preview.roundRest > 0 ? ` · ${preview.roundRest}s round rest` : ""}
           </p>
@@ -196,15 +219,31 @@ export default function BuilderScreen({
           value={soundMode}
           onChange={(v) => setSoundMode(v as SoundMode)}
         />
-        {soundMode === "voice" && (
-          <button
-            onClick={() => testVoice()}
-            className="mt-2 flex w-full items-center justify-center gap-2 rounded-2xl border border-white/15 py-2.5 text-sm font-semibold text-white/70 transition hover:border-white/40"
-          >
-            <Volume2 className="h-4 w-4" />
-            Tap to test voice (“halfway there”)
-          </button>
-        )}
+        <div className="mt-2.5 flex flex-col gap-2.5">
+          <VolumeSlider
+            label="Beep volume"
+            value={beepVol}
+            onChange={(v) => {
+              setBeepVol(v);
+              setBeepVolume(v);
+            }}
+            onTest={() => testBeep()}
+          />
+          {soundMode === "voice" && (
+            <VolumeSlider
+              label="Voice volume"
+              value={voiceVol}
+              onChange={(v) => {
+                setVoiceVol(v);
+                setVoiceVolume(v);
+              }}
+              onTest={() => testVoice()}
+            />
+          )}
+        </div>
+        <p className="mt-2 text-[11px] text-ink/35">
+          Tap the speaker to hear a sample. Releasing a slider plays one too.
+        </p>
       </Section>
 
       <button
@@ -220,7 +259,7 @@ export default function BuilderScreen({
             includeCooldown,
           })
         }
-        className="sticky bottom-4 mt-2 flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-orange-500 via-pink-500 to-violet-500 py-4 text-lg font-black shadow-lg shadow-pink-500/20 transition active:scale-[0.99]"
+        className="sticky bottom-4 mt-2 flex items-center justify-center gap-2 rounded-2xl brand-bg py-4 text-lg font-black shadow-lg shadow-accent/20 transition active:scale-[0.99]"
       >
         Build Workout
         <ArrowRight className="h-5 w-5" />
@@ -243,11 +282,11 @@ function Section({
   return (
     <section>
       <div className="mb-3 flex items-baseline gap-2">
-        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/10 text-xs font-bold text-white/60">
+        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-ink/10 text-xs font-bold text-ink/60">
           {step}
         </span>
         <h2 className="text-lg font-bold">{label}</h2>
-        {hint && <span className="text-xs text-white/35">— {hint}</span>}
+        {hint && <span className="text-xs text-ink/35">— {hint}</span>}
       </div>
       {children}
     </section>
@@ -268,8 +307,8 @@ function OptionCard({
       onClick={onClick}
       className={`flex flex-col items-start gap-1 rounded-2xl border px-3.5 py-3 text-left transition ${
         active
-          ? "border-pink-500 bg-pink-500/10"
-          : "border-white/10 bg-white/[0.03] hover:border-white/25"
+          ? "border-accent bg-accent/10"
+          : "border-ink/10 bg-ink/[0.03] hover:border-ink/25"
       }`}
     >
       {children}
@@ -294,20 +333,20 @@ function ToggleRow({
       role="switch"
       aria-checked={on}
       className={`flex items-center justify-between rounded-2xl border px-4 py-3 text-left transition ${
-        on ? "border-pink-500 bg-pink-500/10" : "border-white/10 bg-white/[0.03]"
+        on ? "border-accent bg-accent/10" : "border-ink/10 bg-ink/[0.03]"
       }`}
     >
       <span>
         <span className="block font-bold">{label}</span>
-        <span className="block text-xs text-white/45">{desc}</span>
+        <span className="block text-xs text-ink/45">{desc}</span>
       </span>
       <span
         className={`relative h-6 w-10 shrink-0 rounded-full transition ${
-          on ? "bg-pink-500" : "bg-white/15"
+          on ? "bg-accent" : "bg-ink/15"
         }`}
       >
         <span
-          className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all ${
+          className={`absolute top-0.5 h-5 w-5 rounded-full bg-ink transition-all ${
             on ? "left-[18px]" : "left-0.5"
           }`}
         />
@@ -333,13 +372,13 @@ function Segmented({
           onClick={() => onChange(o.id)}
           className={`rounded-2xl border px-2 py-3 text-center transition ${
             value === o.id
-              ? "border-pink-500 bg-pink-500/10"
-              : "border-white/10 bg-white/[0.03] hover:border-white/25"
+              ? "border-accent bg-accent/10"
+              : "border-ink/10 bg-ink/[0.03] hover:border-ink/25"
           }`}
         >
           <span className="block text-sm font-bold">{o.label}</span>
           {o.sub && (
-            <span className="block text-[11px] text-white/40">{o.sub}</span>
+            <span className="block text-[11px] text-ink/40">{o.sub}</span>
           )}
         </button>
       ))}

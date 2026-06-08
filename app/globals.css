@@ -4,6 +4,63 @@
 
 :root {
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+
+  /* ---- Light theme (Jabster) — the default ---- */
+  --bg: #f4eaca; /* main background (cream) */
+  --surface: #fbf4de; /* card background */
+  --surface-2: #efe4c4; /* secondary card */
+
+  --ink-rgb: 20 55 68; /* #143744 primary text/foreground */
+  --accent-rgb: 184 58 44; /* #b83a2c brick red — primary action */
+  --gold-rgb: 192 137 43; /* #c0892b streak / premium */
+  --danger-rgb: 184 58 44; /* brick red doubles as danger in light */
+
+  /* Brand gradient (title + primary buttons) and the text that sits on it. */
+  --brand-from: #b83a2c;
+  --brand-via: #b83a2c;
+  --brand-to: #8f2a20;
+  --on-brand: #fbf4de;
+
+  /* Per-step accents for the running-workout screen: a soft tint that fades
+     into the page, plus a readable foreground for labels/timer ring. */
+  --work-fg: #b83a2c;
+  --work-bg: rgba(184, 58, 44, 0.16);
+  --warm-fg: #a8731f;
+  --warm-bg: rgba(192, 137, 43, 0.18);
+  --cool-fg: #2f6d57;
+  --cool-bg: rgba(60, 122, 82, 0.16);
+  --prep-fg: #5246a3;
+  --prep-bg: rgba(82, 70, 163, 0.14);
+  --rest-fg: #2c6a77;
+  --rest-bg: rgba(44, 106, 119, 0.14);
+}
+
+.dark {
+  /* ---- Dark theme (original look) ---- */
+  --bg: #0a0a0f;
+  --surface: #16161d;
+  --surface-2: #16161d;
+
+  --ink-rgb: 245 245 247; /* #f5f5f7 */
+  --accent-rgb: 236 72 153; /* pink-500 */
+  --gold-rgb: 251 191 36; /* amber-400 */
+  --danger-rgb: 248 113 113; /* red-400 */
+
+  --brand-from: #f97316; /* orange-500 */
+  --brand-via: #ec4899; /* pink-500 */
+  --brand-to: #8b5cf6; /* violet-500 */
+  --on-brand: #ffffff;
+
+  --work-fg: #f472b6;
+  --work-bg: rgba(131, 24, 67, 0.4);
+  --warm-fg: #fcd34d;
+  --warm-bg: rgba(120, 53, 15, 0.4);
+  --cool-fg: #818cf8;
+  --cool-bg: rgba(49, 46, 129, 0.4);
+  --prep-fg: #c4b5fd;
+  --prep-bg: rgba(76, 29, 149, 0.4);
+  --rest-fg: #5eead4;
+  --rest-bg: rgba(19, 78, 74, 0.4);
 }
 
 html,
@@ -12,10 +69,33 @@ body {
 }
 
 body {
-  background: #0a0a0f;
-  color: #f5f5f7;
+  background: var(--bg);
+  color: rgb(var(--ink-rgb));
   -webkit-font-smoothing: antialiased;
   overscroll-behavior: none;
+}
+
+/* Brand gradient helpers — flip colors via the variables above. */
+.brand-bg {
+  background-image: linear-gradient(
+    to right,
+    var(--brand-from),
+    var(--brand-via),
+    var(--brand-to)
+  );
+  color: var(--on-brand);
+}
+
+.brand-text {
+  background-image: linear-gradient(
+    to right,
+    var(--brand-from),
+    var(--brand-via),
+    var(--brand-to)
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 
 /* Hide number input spinners */

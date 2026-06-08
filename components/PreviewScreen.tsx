@@ -38,14 +38,14 @@ export default function PreviewScreen({
       <header className="flex items-center justify-between pt-1">
         <button
           onClick={onBack}
-          className="flex items-center gap-1 text-sm font-semibold text-white/50 transition hover:text-white"
+          className="flex items-center gap-1 text-sm font-semibold text-ink/50 transition hover:text-ink"
         >
           <ChevronLeft className="h-4 w-4" />
           Edit
         </button>
         <button
           onClick={onRegenerate}
-          className="flex items-center gap-1.5 rounded-full border border-white/15 px-3 py-1.5 text-xs font-semibold text-white/70 transition hover:border-white/40"
+          className="flex items-center gap-1.5 rounded-full border border-ink/15 px-3 py-1.5 text-xs font-semibold text-ink/70 transition hover:border-ink/40"
         >
           <Shuffle className="h-3.5 w-3.5" />
           Shuffle
@@ -53,11 +53,11 @@ export default function PreviewScreen({
       </header>
 
       <div>
-        <p className="text-sm font-semibold uppercase tracking-wider text-pink-400">
+        <p className="text-sm font-semibold uppercase tracking-wider text-accent">
           {format.name}
         </p>
         <h1 className="flex items-center gap-2 text-3xl font-black">
-          {goal?.icon && <goal.icon className="h-7 w-7 text-pink-400" />}
+          {goal?.icon && <goal.icon className="h-7 w-7 text-accent" />}
           {goal?.name}
         </h1>
         <div className="mt-3 flex flex-wrap gap-2">
@@ -72,14 +72,14 @@ export default function PreviewScreen({
         {warmupSteps.length > 0 && (
           <StretchSection
             title="Warm-Up"
-            accent="text-amber-400"
+            accent="text-gold"
             steps={warmupSteps}
           />
         )}
 
         {[...byRound.entries()].map(([round, list]) => (
           <div key={round}>
-            <h3 className="mb-2 text-xs font-bold uppercase tracking-wider text-white/40">
+            <h3 className="mb-2 text-xs font-bold uppercase tracking-wider text-ink/40">
               Round {round}
             </h3>
             <ol className="space-y-1.5">
@@ -89,7 +89,7 @@ export default function PreviewScreen({
                   <ExerciseItem
                     key={i}
                     step={s}
-                    accent="text-pink-400"
+                    accent="text-accent"
                   />
                 ))}
             </ol>
@@ -99,7 +99,7 @@ export default function PreviewScreen({
         {cooldownSteps.length > 0 && (
           <StretchSection
             title="Cool-Down"
-            accent="text-indigo-400"
+            accent="text-[color:var(--cool-fg)]"
             steps={cooldownSteps}
           />
         )}
@@ -112,7 +112,7 @@ export default function PreviewScreen({
           unlockVoice();
           onStart();
         }}
-        className="sticky bottom-4 flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-orange-500 via-pink-500 to-violet-500 py-4 text-lg font-black shadow-lg shadow-pink-500/20 transition active:scale-[0.99]"
+        className="sticky bottom-4 flex items-center justify-center gap-2 rounded-2xl brand-bg py-4 text-lg font-black shadow-lg shadow-accent/20 transition active:scale-[0.99]"
       >
         Start Workout
         <Play className="h-5 w-5 fill-current" />
@@ -159,7 +159,7 @@ function ExerciseItem({
   if (!ex) return null;
 
   return (
-    <li className="rounded-xl border border-white/10 bg-white/[0.03]">
+    <li className="rounded-xl border border-ink/10 bg-ink/[0.03]">
       <button
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
@@ -167,12 +167,12 @@ function ExerciseItem({
       >
         <span className="min-w-0">
           <span className="block font-bold">{ex.name}</span>
-          <span className="block text-xs text-white/40">{ex.cue}</span>
+          <span className="block text-xs text-ink/40">{ex.cue}</span>
         </span>
         <span className="flex shrink-0 items-center gap-2">
           {ex.description && (
             <ChevronDown
-              className={`h-4 w-4 text-white/30 transition-transform ${open ? "rotate-180" : ""}`}
+              className={`h-4 w-4 text-ink/30 transition-transform ${open ? "rotate-180" : ""}`}
               aria-hidden
             />
           )}
@@ -182,7 +182,7 @@ function ExerciseItem({
         </span>
       </button>
       {open && ex.description && (
-        <p className="border-t border-white/5 px-4 py-2.5 text-sm leading-relaxed text-white/60">
+        <p className="border-t border-ink/5 px-4 py-2.5 text-sm leading-relaxed text-ink/60">
           {ex.description}
         </p>
       )}
@@ -192,8 +192,8 @@ function ExerciseItem({
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
-      <span className="block text-[10px] uppercase tracking-wider text-white/40">
+    <div className="rounded-xl border border-ink/10 bg-ink/[0.03] px-3 py-2">
+      <span className="block text-[10px] uppercase tracking-wider text-ink/40">
         {label}
       </span>
       <span className="block font-bold">{value}</span>

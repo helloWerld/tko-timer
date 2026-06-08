@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import LockScreen from "@/components/LockScreen";
 import BuilderScreen from "@/components/BuilderScreen";
 import PreviewScreen from "@/components/PreviewScreen";
 import WorkoutScreen from "@/components/WorkoutScreen";
@@ -16,7 +17,30 @@ type Phase = "build" | "preview" | "run" | "done" | "settings";
 export default function Home() {
   const [phase, setPhase] = useState<Phase>("build");
   const [workout, setWorkout] = useState<GeneratedWorkout | null>(null);
+  const [unlocked, setUnlocked] = useState(false);
+  const [checking, setChecking] = useState(true);
   const { store, toggle, addExercise, removeCustom } = useExerciseStore();
+
+  // Ask the server whether this browser already holds a valid unlock cookie, so
+  // we don't re-prompt on every reload. The cookie is httpOnly, so the check
+  // has to round-trip to the server.
+  useEffect(() => {
+    let active = true;
+    fetch("/api/unlock")
+      .then((r) => r.json())
+      .then((d) => {
+        if (active) setUnlocked(Boolean(d?.unlocked));
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (active) setChecking(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const handleUnlock = useCallback(() => setUnlocked(true), []);
 
   const handleBuild = useCallback(
     (settings: WorkoutSettings) => {
@@ -34,7 +58,9 @@ export default function Home() {
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-2xl flex-col px-5 py-6">
-      {phase === "build" && (
+      {!checking && !unlocked && <LockScreen onUnlock={handleUnlock} />}
+
+      {unlocked && phase === "build" && (
         <BuilderScreen
           onBuild={handleBuild}
           onOpenSettings={() => setPhase("settings")}
@@ -42,7 +68,7 @@ export default function Home() {
         />
       )}
 
-      {phase === "settings" && (
+      {unlocked && phase === "settings" && (
         <SettingsScreen
           store={store}
           onToggle={toggle}
@@ -52,7 +78,7 @@ export default function Home() {
         />
       )}
 
-      {phase === "preview" && workout && (
+      {unlocked && phase === "preview" && workout && (
         <PreviewScreen
           workout={workout}
           onBack={() => setPhase("build")}
@@ -61,7 +87,7 @@ export default function Home() {
         />
       )}
 
-      {phase === "run" && workout && (
+      {unlocked && phase === "run" && workout && (
         <WorkoutScreen
           workout={workout}
           onExit={() => setPhase("preview")}
@@ -69,7 +95,7 @@ export default function Home() {
         />
       )}
 
-      {phase === "done" && workout && (
+      {unlocked && phase === "done" && workout && (
         <CompleteScreen
           workout={workout}
           onRestart={() => setPhase("run")}

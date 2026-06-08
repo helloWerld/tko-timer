@@ -42,8 +42,8 @@ export function buildWorkoutExport(workout: GeneratedWorkout): string {
   const goal = GOALS.find((g) => g.id === settings.goal)?.name ?? settings.goal;
 
   const L: string[] = [];
-  L.push("PulseFit Workout");
-  L.push("================");
+  L.push("TKO Timer Workout");
+  L.push("=================");
   L.push("");
   L.push(`Goal:        ${goal}`);
   L.push(`Format:      ${format.name}`);
@@ -78,9 +78,9 @@ export function buildWorkoutExport(workout: GeneratedWorkout): string {
   return L.join("\n");
 }
 
-/** A safe-ish filename for the export, e.g. pulsefit-full-body-2026-06-08.txt */
+/** A safe-ish filename for the export, e.g. tko-timer-full-body-2026-06-08.txt */
 export function exportFileName(workout: GeneratedWorkout): string {
   const goalSlug = workout.settings.goal;
   const date = new Date().toISOString().slice(0, 10);
-  return `pulsefit-${goalSlug}-${date}.txt`;
+  return `tko-timer-${goalSlug}-${date}.txt`;
 }

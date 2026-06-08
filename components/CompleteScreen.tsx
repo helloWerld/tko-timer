@@ -44,7 +44,7 @@ export default function CompleteScreen({
   const email = () => {
     const text = buildWorkoutExport(workout);
     const subject = encodeURIComponent(
-      `PulseFit Workout — ${goal?.name ?? ""} (${workout.format.name})`,
+      `TKO Timer Workout — ${goal?.name ?? ""} (${workout.format.name})`,
     );
     const body = encodeURIComponent(text);
     window.location.href = `mailto:?subject=${subject}&body=${body}`;
@@ -63,13 +63,13 @@ export default function CompleteScreen({
   return (
     <div className="flex min-h-dvh flex-col items-center justify-center gap-8 text-center animate-slide-up">
       <div>
-        <PartyPopper className="mx-auto h-14 w-14 text-pink-400" />
+        <PartyPopper className="mx-auto h-14 w-14 text-accent" />
         <h1 className="mt-3 text-4xl font-black">
-          <span className="bg-gradient-to-r from-orange-400 via-pink-500 to-violet-500 bg-clip-text text-transparent">
+          <span className="brand-text">
             Workout Complete
           </span>
         </h1>
-        <p className="mt-2 text-white/55">
+        <p className="mt-2 text-ink/55">
           {goal?.name} · {workout.format.name}
         </p>
       </div>
@@ -81,7 +81,7 @@ export default function CompleteScreen({
       </div>
 
       <div className="w-full">
-        <p className="mb-2 text-xs font-bold uppercase tracking-wider text-white/40">
+        <p className="mb-2 text-xs font-bold uppercase tracking-wider text-ink/40">
           Export workout
         </p>
         <div className="flex flex-col gap-2">
@@ -93,7 +93,7 @@ export default function CompleteScreen({
             label={copied ? "Copied" : "Copy"}
           />
         </div>
-        <p className="mt-2 text-[11px] text-white/35">
+        <p className="mt-2 text-[11px] text-ink/35">
           Plain-text file with all settings and the full timeline (warm-up, work,
           rest, cool-down).
         </p>
@@ -102,14 +102,14 @@ export default function CompleteScreen({
       <div className="flex w-full flex-col gap-3">
         <button
           onClick={onRestart}
-          className="flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-orange-500 via-pink-500 to-violet-500 py-4 text-lg font-black shadow-lg shadow-pink-500/20 transition active:scale-[0.99]"
+          className="flex items-center justify-center gap-2 rounded-2xl brand-bg py-4 text-lg font-black shadow-lg shadow-accent/20 transition active:scale-[0.99]"
         >
           <RotateCcw className="h-5 w-5" />
           Do It Again
         </button>
         <button
           onClick={onNew}
-          className="rounded-2xl border border-white/15 py-4 text-lg font-bold text-white/80 transition hover:border-white/40"
+          className="rounded-2xl border border-ink/15 py-4 text-lg font-bold text-ink/80 transition hover:border-ink/40"
         >
           New Workout
         </button>
@@ -130,7 +130,7 @@ function ExportButton({
   return (
     <button
       onClick={onClick}
-      className="flex w-full items-center justify-center gap-2 rounded-2xl border border-white/15 py-3.5 text-base font-semibold text-white/80 transition hover:border-white/40 active:scale-[0.99]"
+      className="flex w-full items-center justify-center gap-2 rounded-2xl border border-ink/15 py-3.5 text-base font-semibold text-ink/80 transition hover:border-ink/40 active:scale-[0.99]"
     >
       <Icon className="h-5 w-5" />
       {label}
@@ -140,9 +140,9 @@ function ExportButton({
 
 function Stat({ value, label }: { value: string; label: string }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
+    <div className="rounded-2xl border border-ink/10 bg-ink/[0.03] px-4 py-3">
       <div className="text-2xl font-black">{value}</div>
-      <div className="text-[11px] uppercase tracking-wider text-white/40">
+      <div className="text-[11px] uppercase tracking-wider text-ink/40">
         {label}
       </div>
     </div>

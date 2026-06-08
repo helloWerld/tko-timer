@@ -1,4 +1,4 @@
-# PulseFit — Workout Builder & Timer
+# TKO Timer — Workout Builder & Timer
 
 A private, no-auth Next.js app that builds custom interval workouts and runs them
 with a beep-driven timer.
@@ -51,17 +51,28 @@ Fully synthesized with the Web Audio API — no files:
 
 Both modes end with a **finish fanfare**.
 
-Use the **🔊 Tap to test voice** button in the builder's Sound section to confirm
-the spoken cues are audible on your device before starting a workout.
+### How it's wired
+
+All audio runs through one Web Audio context with two master gain nodes — one
+for beeps, one for voice (`lib/audio.ts`). Beeps are oscillator tones. The spoken
+clips are decoded into Web Audio buffers and played through the voice gain node,
+with an HTML `<audio>` fallback for the brief window before they finish decoding.
+
+### Volume
+
+Independent **Beep** and **Voice** volume sliders (persisted in localStorage),
+available in the builder's Sound section **and** during a workout (the speaker
+button in the timer's top bar). Tap a speaker icon, or release a slider, to hear
+a sample. Each slider goes up to **125%** with a magnetic detent at 100% (the
+handle sticks to a marker line); above 100% a clipping warning appears, since
+amplifying past unity gain can distort.
 
 ### Playing alongside background music — on hold
 
 An earlier attempt set `navigator.audioSession.type = "ambient"` so cues would
 mix with music from another app instead of pausing it. On browsers that support
-that API it silenced the spoken cues (while beeps kept playing), so it's been
-removed in favor of cues that reliably play. Revisiting this safely would need
-testing on a browser that actually supports `navigator.audioSession` (the beeps
-are Web Audio and already mix; the spoken clips are HTML `<audio>`).
+that API it silenced the spoken cues, so it's been removed in favor of cues that
+reliably play.
 
 ## Exercise library (no database)
 

@@ -48,25 +48,25 @@ export default function SettingsScreen({
       <header className="flex items-center justify-between pt-1">
         <button
           onClick={onBack}
-          className="flex items-center gap-1 text-sm font-semibold text-white/60 transition hover:text-white"
+          className="flex items-center gap-1 text-sm font-semibold text-ink/60 transition hover:text-ink"
         >
           <ChevronLeft className="h-4 w-4" />
           Done
         </button>
-        <span className="text-xs font-semibold text-white/40">
+        <span className="text-xs font-semibold text-ink/40">
           {enabledCount} / {all.length} active
         </span>
       </header>
 
       <div>
         <h1 className="text-3xl font-black">Exercise Library</h1>
-        <p className="mt-1 text-sm text-white/50">
+        <p className="mt-1 text-sm text-ink/50">
           Toggle exercises on or off, or add your own. Saved on this device.
         </p>
       </div>
 
       {emptyGoals.length > 0 && (
-        <p className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+        <p className="rounded-xl border border-gold/30 bg-gold/10 px-3 py-2 text-xs text-gold">
           No active exercises for: {emptyGoals.map((g) => g.name).join(", ")}.
           Those workouts will fall back to the built-in moves.
         </p>
@@ -74,7 +74,7 @@ export default function SettingsScreen({
 
       <button
         onClick={() => setShowAdd((v) => !v)}
-        className="flex items-center justify-center gap-1.5 rounded-2xl border border-pink-500/50 bg-pink-500/10 py-3 text-sm font-bold text-pink-300 transition hover:bg-pink-500/20"
+        className="flex items-center justify-center gap-1.5 rounded-2xl border border-accent/50 bg-accent/10 py-3 text-sm font-bold text-accent transition hover:bg-accent/20"
       >
         {showAdd ? (
           <>
@@ -123,7 +123,7 @@ export default function SettingsScreen({
           />
         ))}
         {list.length === 0 && (
-          <li className="py-8 text-center text-sm text-white/40">
+          <li className="py-8 text-center text-sm text-ink/40">
             No exercises for this filter.
           </li>
         )}
@@ -146,7 +146,7 @@ function LibraryRow({
   const [open, setOpen] = useState(false);
 
   return (
-    <li className="rounded-xl border border-white/10 bg-white/[0.03]">
+    <li className="rounded-xl border border-ink/10 bg-ink/[0.03]">
       <div className="flex items-center gap-3 px-4 py-2.5">
         <button
           onClick={onToggle}
@@ -154,11 +154,11 @@ function LibraryRow({
           aria-checked={on}
           aria-label={`Toggle ${e.name}`}
           className={`relative h-6 w-10 shrink-0 rounded-full transition ${
-            on ? "bg-pink-500" : "bg-white/15"
+            on ? "bg-accent" : "bg-ink/15"
           }`}
         >
           <span
-            className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all ${
+            className={`absolute top-0.5 h-5 w-5 rounded-full bg-ink transition-all ${
               on ? "left-[18px]" : "left-0.5"
             }`}
           />
@@ -173,18 +173,18 @@ function LibraryRow({
             <span className="flex items-center gap-2">
               <span className="font-bold">{e.name}</span>
               {e.custom && (
-                <span className="rounded bg-violet-500/20 px-1.5 py-0.5 text-[10px] font-bold uppercase text-violet-300">
+                <span className="rounded bg-gold/20 px-1.5 py-0.5 text-[10px] font-bold uppercase text-gold">
                   Custom
                 </span>
               )}
             </span>
-            <span className="block text-xs text-white/40">
+            <span className="block text-xs text-ink/40">
               {e.goals.map((g) => goalName(g)).join(" · ")} · {cap(e.difficulty)}
             </span>
           </span>
           {e.description && (
             <ChevronDown
-              className={`h-4 w-4 shrink-0 text-white/30 transition-transform ${open ? "rotate-180" : ""}`}
+              className={`h-4 w-4 shrink-0 text-ink/30 transition-transform ${open ? "rotate-180" : ""}`}
               aria-hidden
             />
           )}
@@ -194,7 +194,7 @@ function LibraryRow({
           <button
             onClick={onRemove}
             aria-label={`Delete ${e.name}`}
-            className="shrink-0 rounded-lg p-1.5 text-white/40 transition hover:bg-red-500/15 hover:text-red-400"
+            className="shrink-0 rounded-lg p-1.5 text-ink/40 transition hover:bg-danger/15 hover:text-danger"
           >
             <Trash2 className="h-4 w-4" />
           </button>
@@ -202,7 +202,7 @@ function LibraryRow({
       </div>
 
       {open && e.description && (
-        <p className="border-t border-white/5 px-4 py-2.5 text-sm leading-relaxed text-white/60">
+        <p className="border-t border-ink/5 px-4 py-2.5 text-sm leading-relaxed text-ink/60">
           {e.description}
         </p>
       )}
@@ -238,10 +238,10 @@ function AddForm({ onAdd }: { onAdd: (ex: Exercise) => void }) {
   };
 
   const inputCls =
-    "w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2.5 text-sm outline-none transition focus:border-pink-500";
+    "w-full rounded-xl border border-ink/10 bg-ink/[0.04] px-3 py-2.5 text-sm outline-none transition focus:border-accent";
 
   return (
-    <div className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+    <div className="flex flex-col gap-3 rounded-2xl border border-ink/10 bg-ink/[0.02] p-4">
       <input
         className={inputCls}
         placeholder="Exercise name (e.g. Plank Jacks)"
@@ -265,7 +265,7 @@ function AddForm({ onAdd }: { onAdd: (ex: Exercise) => void }) {
       />
 
       <div>
-        <p className="mb-1.5 text-xs font-semibold text-white/50">Goals</p>
+        <p className="mb-1.5 text-xs font-semibold text-ink/50">Goals</p>
         <div className="flex flex-wrap gap-2">
           {GOALS.map((g) => (
             <FilterChip
@@ -286,7 +286,7 @@ function AddForm({ onAdd }: { onAdd: (ex: Exercise) => void }) {
       </div>
 
       <div>
-        <p className="mb-1.5 text-xs font-semibold text-white/50">Difficulty</p>
+        <p className="mb-1.5 text-xs font-semibold text-ink/50">Difficulty</p>
         <div className="grid grid-cols-3 gap-2">
           {DIFFICULTIES.map((d) => (
             <button
@@ -294,8 +294,8 @@ function AddForm({ onAdd }: { onAdd: (ex: Exercise) => void }) {
               onClick={() => setDifficulty(d)}
               className={`rounded-xl border px-2 py-2 text-sm font-semibold capitalize transition ${
                 difficulty === d
-                  ? "border-pink-500 bg-pink-500/10"
-                  : "border-white/10 bg-white/[0.03]"
+                  ? "border-accent bg-accent/10"
+                  : "border-ink/10 bg-ink/[0.03]"
               }`}
             >
               {d}
@@ -304,11 +304,11 @@ function AddForm({ onAdd }: { onAdd: (ex: Exercise) => void }) {
         </div>
       </div>
 
-      {error && <p className="text-xs font-semibold text-red-400">{error}</p>}
+      {error && <p className="text-xs font-semibold text-danger">{error}</p>}
 
       <button
         onClick={submit}
-        className="rounded-xl bg-gradient-to-r from-orange-500 via-pink-500 to-violet-500 py-2.5 text-sm font-black transition active:scale-[0.99]"
+        className="rounded-xl brand-bg py-2.5 text-sm font-black transition active:scale-[0.99]"
       >
         Add exercise
       </button>
@@ -330,8 +330,8 @@ function FilterChip({
       onClick={onClick}
       className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
         active
-          ? "border-pink-500 bg-pink-500/10 text-white"
-          : "border-white/10 bg-white/[0.03] text-white/60 hover:border-white/25"
+          ? "border-accent bg-accent/10 text-ink"
+          : "border-ink/10 bg-ink/[0.03] text-ink/60 hover:border-ink/25"
       }`}
     >
       {children}

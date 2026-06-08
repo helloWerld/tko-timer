@@ -1,21 +1,39 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { HelpCircle, Pause, Play, SkipBack, SkipForward, X } from "lucide-react";
+import {
+  HelpCircle,
+  Pause,
+  Play,
+  SkipBack,
+  SkipForward,
+  Volume2,
+  X,
+} from "lucide-react";
 import {
   countdownCue,
-  countdownVoice,
+  countdownToRestVoice,
+  countdownToWorkVoice,
   finishCue,
+  getReadyVoice,
+  getVolumes,
   goCue,
   halfwayCue,
   halfwayVoice,
   longGoBeep,
+  prepGoVoice,
   restCue,
+  restEndVoice,
+  setBeepVolume,
+  setVoiceVolume,
   stretchCue,
+  testBeep,
+  testVoice,
   unlockAudio,
 } from "@/lib/audio";
 import { formatClock } from "@/lib/time";
 import type { GeneratedWorkout, IntervalStep } from "@/lib/types";
+import VolumeSlider from "./VolumeSlider";
 
 const TICK_MS = 100;
 
@@ -35,6 +53,16 @@ export default function WorkoutScreen({
   const [remaining, setRemaining] = useState(steps[0]?.seconds ?? 0);
   const [running, setRunning] = useState(true);
   const [showHelp, setShowHelp] = useState(false);
+  const [showVolume, setShowVolume] = useState(false);
+  const [beepVol, setBeepVol] = useState(1);
+  const [voiceVol, setVoiceVol] = useState(1);
+
+  // Sync the volume sliders with the persisted values on mount.
+  useEffect(() => {
+    const v = getVolumes();
+    setBeepVol(v.beep);
+    setVoiceVol(v.voice);
+  }, []);
 
   const step = steps[stepIndex];
 
@@ -44,6 +72,8 @@ export default function WorkoutScreen({
   const runningRef = useRef(true);
   const advancingRef = useRef(false);
   const wakeLockRef = useRef<any>(null);
+  // One-shot voice cues that already fired this step (robust to skipped ticks).
+  const firedRef = useRef<Set<string>>(new Set());
 
   runningRef.current = running;
 
@@ -70,6 +100,7 @@ export default function WorkoutScreen({
     setRemaining(s.seconds);
     setShowHelp(false);
     advancingRef.current = false;
+    firedRef.current.clear();
     if (s.kind === "work") {
       // Voice mode marks the set start with a long "go" beep; beep mode uses
       // the rising two-tone cue.
@@ -77,6 +108,7 @@ export default function WorkoutScreen({
       else goCue();
     } else if (s.kind === "rest" || s.kind === "roundRest") restCue();
     else if (s.kind === "warmup" || s.kind === "cooldown") stretchCue();
+    else if (s.kind === "prep" && voice) getReadyVoice();
   }, [stepIndex, steps, voice]);
 
   // Main countdown loop.
@@ -100,15 +132,35 @@ export default function WorkoutScreen({
         prevCeilRef.current = ceil;
         const half = Math.round(s.seconds / 2);
 
+        const nextKind = steps[stepIndex + 1]?.kind;
+
         if (voice) {
+          // Voice one-shots fire once when the countdown CROSSES the threshold
+          // (robust if a tick skips the exact second), plus the per-second
+          // countdown beeps (5s on work / warm-up / cool-down, 3s on rest / prep).
+          const fired = firedRef.current;
+          const fireOnce = (k: string, fn: () => void) => {
+            if (!fired.has(k)) {
+              fired.add(k);
+              fn();
+            }
+          };
           if (s.kind === "work") {
-            // Voice on work sets: "halfway there" at the midpoint, then "5,4,3,
-            // 2,1" starting with exactly 5 seconds left.
-            if (ceil === 5 && s.seconds >= 6) countdownVoice();
-            else if (ceil <= 5 && ceil >= 1 && s.seconds < 6) countdownCue();
-            if (ceil === half && half > 5) halfwayVoice();
-          } else {
-            // Non-work intervals stay on beeps: a 3-2-1 countdown into the set.
+            if (half > 5 && ceil <= half) fireOnce("half", halfwayVoice);
+            if (s.seconds >= 6 && ceil <= 5) {
+              fireOnce("count", nextKind === "work" ? countdownToWorkVoice : countdownToRestVoice);
+            }
+            if (ceil <= 5 && ceil >= 1) countdownCue();
+          } else if (s.kind === "warmup" || s.kind === "cooldown") {
+            // Same as work: "halfway there" + the 5s countdown clip.
+            if (half > 5 && ceil <= half) fireOnce("half", halfwayVoice);
+            if (s.seconds >= 6 && ceil <= 5) fireOnce("count", countdownToWorkVoice);
+            if (ceil <= 5 && ceil >= 1) countdownCue();
+          } else if (s.kind === "rest" || s.kind === "roundRest") {
+            if (s.seconds >= 4 && ceil <= 3) fireOnce("count", restEndVoice);
+            if (ceil <= 3 && ceil >= 1) countdownCue();
+          } else if (s.kind === "prep") {
+            if (s.seconds >= 4 && ceil <= 3) fireOnce("count", prepGoVoice);
             if (ceil <= 3 && ceil >= 1) countdownCue();
           }
         } else {
@@ -178,7 +230,7 @@ export default function WorkoutScreen({
   const displaySeconds = Math.ceil(remaining - 0.0001) || 0;
 
   const theme = stepTheme(step);
-  const nextUp = nextExercise(steps, stepIndex);
+  const upNext = nextStepLabel(steps, stepIndex);
 
   return (
     <div
@@ -188,26 +240,35 @@ export default function WorkoutScreen({
       <div className="flex items-center justify-between">
         <button
           onClick={onExit}
-          className="flex items-center gap-1 text-sm font-semibold text-white/60 transition hover:text-white"
+          className="flex items-center gap-1 text-sm font-semibold text-ink/60 transition hover:text-ink"
         >
           <X className="h-4 w-4" />
           Quit
         </button>
-        <span className="text-sm font-semibold text-white/60">
-          {step.kind === "warmup"
-            ? "Warm-Up"
-            : step.kind === "cooldown"
-              ? "Cool-Down"
-              : step.kind === "prep"
-                ? "Get Ready"
-                : `Round ${step.round} / ${workout.rounds}`}
-        </span>
+        <div className="flex items-center gap-3">
+          <span className="text-sm font-semibold text-ink/60">
+            {step.kind === "warmup"
+              ? "Warm-Up"
+              : step.kind === "cooldown"
+                ? "Cool-Down"
+                : step.kind === "prep"
+                  ? "Get Ready"
+                  : `Round ${step.round} / ${workout.rounds}`}
+          </span>
+          <button
+            onClick={() => setShowVolume(true)}
+            aria-label="Volume"
+            className="flex h-8 w-8 items-center justify-center rounded-full border border-ink/20 text-ink/70 transition hover:border-ink/40 hover:text-ink"
+          >
+            <Volume2 className="h-4 w-4" />
+          </button>
+        </div>
       </div>
 
       {/* Overall progress bar */}
-      <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+      <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-ink/10">
         <div
-          className="h-full rounded-full bg-white/80 transition-[width] duration-200 ease-linear"
+          className="h-full rounded-full bg-ink/80 transition-[width] duration-200 ease-linear"
           style={{ width: `${overallPct}%` }}
         />
       </div>
@@ -238,7 +299,7 @@ export default function WorkoutScreen({
               cy="50"
               r="46"
               fill="none"
-              stroke="rgba(255,255,255,0.12)"
+              stroke="rgb(var(--ink-rgb) / 0.12)"
               strokeWidth="6"
             />
             <circle
@@ -267,31 +328,29 @@ export default function WorkoutScreen({
               <h2 className="text-3xl font-black leading-tight">
                 {step.exercise.name}
               </h2>
-              <p className="mt-1 text-sm text-white/60">{step.exercise.cue}</p>
+              <p className="mt-1 text-sm text-ink/60">{step.exercise.cue}</p>
               {step.exercise.description && (
                 <button
                   onClick={() => setShowHelp(true)}
                   aria-label="How to do this exercise"
-                  className="mx-auto mt-3 flex h-9 w-9 items-center justify-center rounded-full border border-white/25 text-white/70 transition hover:border-white/50 hover:text-white"
+                  className="mx-auto mt-3 flex h-9 w-9 items-center justify-center rounded-full border border-ink/25 text-ink/70 transition hover:border-ink/50 hover:text-ink"
                 >
                   <HelpCircle className="h-5 w-5" />
                 </button>
               )}
             </>
           ) : (
-            <>
-              <h2 className="text-2xl font-bold text-white/80">
-                {step.kind === "prep" ? "First up…" : "Breathe"}
-              </h2>
-              {nextUp && (
-                <p className="mt-1 text-sm text-white/55">
-                  Next: <span className="font-bold text-white/80">{nextUp.name}</span>
-                </p>
-              )}
-            </>
+            <h2 className="text-2xl font-bold text-ink/80">
+              {step.kind === "prep" ? "First up…" : "Breathe"}
+            </h2>
           )}
         </div>
       </div>
+
+      {/* Up next — directly above the controls */}
+      <p className="mb-3 text-center text-sm text-ink/45">
+        Up next: <span className="font-bold text-ink/75">{upNext}</span>
+      </p>
 
       {/* Controls */}
       <div className="flex items-center justify-center gap-4 pb-2">
@@ -301,7 +360,7 @@ export default function WorkoutScreen({
         <button
           onClick={togglePause}
           aria-label={running ? "Pause" : "Resume"}
-          className="flex h-20 w-20 items-center justify-center rounded-full bg-white text-black shadow-lg transition active:scale-95"
+          className="flex h-20 w-20 items-center justify-center rounded-full bg-ink text-[color:var(--bg)] shadow-lg transition active:scale-95"
         >
           {running ? (
             <Pause className="h-8 w-8 fill-current" />
@@ -314,7 +373,7 @@ export default function WorkoutScreen({
         </CircleButton>
       </div>
 
-      <p className="pb-1 text-center text-xs text-white/40">
+      <p className="pb-1 text-center text-xs text-ink/40">
         {formatClock(elapsedTotal)} / {formatClock(totalSeconds)}
       </p>
 
@@ -324,7 +383,7 @@ export default function WorkoutScreen({
           onClick={() => setShowHelp(false)}
         >
           <div
-            className="w-full max-w-md rounded-3xl border border-white/15 bg-[#16161d] p-5 shadow-2xl"
+            className="w-full max-w-md rounded-3xl border border-ink/15 bg-[color:var(--surface)] p-5 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-3">
@@ -339,14 +398,59 @@ export default function WorkoutScreen({
               <button
                 onClick={() => setShowHelp(false)}
                 aria-label="Close"
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/15 text-white/70 transition hover:border-white/40 hover:text-white"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-ink/15 text-ink/70 transition hover:border-ink/40 hover:text-ink"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <p className="mt-3 text-base leading-relaxed text-white/75">
+            <p className="mt-3 text-base leading-relaxed text-ink/75">
               {step.exercise.description ?? step.exercise.cue}
             </p>
+          </div>
+        </div>
+      )}
+
+      {showVolume && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-4 sm:items-center"
+          onClick={() => setShowVolume(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-3xl border border-ink/15 bg-[color:var(--surface)] p-5 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-xl font-black">Volume</h3>
+              <button
+                onClick={() => setShowVolume(false)}
+                aria-label="Close"
+                className="flex h-9 w-9 items-center justify-center rounded-full border border-ink/15 text-ink/70 transition hover:border-ink/40 hover:text-ink"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="flex flex-col gap-2.5">
+              <VolumeSlider
+                label="Beep volume"
+                value={beepVol}
+                onChange={(v) => {
+                  setBeepVol(v);
+                  setBeepVolume(v);
+                }}
+                onTest={() => testBeep()}
+              />
+              {voice && (
+                <VolumeSlider
+                  label="Voice volume"
+                  value={voiceVol}
+                  onChange={(v) => {
+                    setVoiceVol(v);
+                    setVoiceVolume(v);
+                  }}
+                  onTest={() => testVoice()}
+                />
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -367,52 +471,60 @@ function CircleButton({
     <button
       onClick={onClick}
       aria-label={label}
-      className="flex h-14 w-14 items-center justify-center rounded-full border border-white/20 bg-white/10 text-xl transition hover:bg-white/20 active:scale-95"
+      className="flex h-14 w-14 items-center justify-center rounded-full border border-ink/20 bg-ink/10 text-xl transition hover:bg-ink/20 active:scale-95"
     >
       {children}
     </button>
   );
 }
 
+// Per-step tint + foreground. Colors come from CSS variables (--<kind>-bg/-fg)
+// so each theme supplies its own readable palette; the gradient fades into the
+// page background (--bg) in both themes. NOTE: these must be complete literal
+// class strings — Tailwind's JIT can't see classes built from template parts.
 function stepTheme(step: IntervalStep) {
   if (step.kind === "work") {
     return {
-      bg: "from-pink-900/40 via-[#0a0a0f] to-[#0a0a0f]",
-      label: "text-pink-400",
-      stroke: "text-pink-500",
+      bg: "from-[var(--work-bg)] via-[color:var(--bg)] to-[color:var(--bg)]",
+      label: "text-[color:var(--work-fg)]",
+      stroke: "text-[color:var(--work-fg)]",
     };
   }
   if (step.kind === "warmup") {
     return {
-      bg: "from-amber-900/40 via-[#0a0a0f] to-[#0a0a0f]",
-      label: "text-amber-300",
-      stroke: "text-amber-400",
+      bg: "from-[var(--warm-bg)] via-[color:var(--bg)] to-[color:var(--bg)]",
+      label: "text-[color:var(--warm-fg)]",
+      stroke: "text-[color:var(--warm-fg)]",
     };
   }
   if (step.kind === "cooldown") {
     return {
-      bg: "from-indigo-900/40 via-[#0a0a0f] to-[#0a0a0f]",
-      label: "text-indigo-300",
-      stroke: "text-indigo-400",
+      bg: "from-[var(--cool-bg)] via-[color:var(--bg)] to-[color:var(--bg)]",
+      label: "text-[color:var(--cool-fg)]",
+      stroke: "text-[color:var(--cool-fg)]",
     };
   }
   if (step.kind === "prep") {
     return {
-      bg: "from-violet-900/40 via-[#0a0a0f] to-[#0a0a0f]",
-      label: "text-violet-300",
-      stroke: "text-violet-400",
+      bg: "from-[var(--prep-bg)] via-[color:var(--bg)] to-[color:var(--bg)]",
+      label: "text-[color:var(--prep-fg)]",
+      stroke: "text-[color:var(--prep-fg)]",
     };
   }
   return {
-    bg: "from-teal-900/40 via-[#0a0a0f] to-[#0a0a0f]",
-    label: "text-teal-300",
-    stroke: "text-teal-400",
+    bg: "from-[var(--rest-bg)] via-[color:var(--bg)] to-[color:var(--bg)]",
+    label: "text-[color:var(--rest-fg)]",
+    stroke: "text-[color:var(--rest-fg)]",
   };
 }
 
-function nextExercise(steps: IntervalStep[], from: number) {
-  for (let i = from + 1; i < steps.length; i++) {
-    if (steps[i].exercise) return steps[i].exercise!;
-  }
-  return null;
+/** Human-readable label for the step immediately after `from`. */
+function nextStepLabel(steps: IntervalStep[], from: number): string {
+  const next = steps[from + 1];
+  if (!next) return "Finish";
+  if (next.exercise) return next.exercise.name;
+  if (next.kind === "rest") return "Rest";
+  if (next.kind === "roundRest") return "Round Rest";
+  if (next.kind === "prep") return "Get Ready";
+  return "Finish";
 }
