@@ -81,9 +81,29 @@ function graph(): AudioContext | null {
   return c;
 }
 
+/**
+ * Ask the OS to briefly duck other apps' audio (e.g. a music player) while our
+ * cues play, then restore it. "transient" is the notification-ping mode — the
+ * opposite of "ambient", which would mark our audio as background and let the
+ * system quiet *us*. Feature-detected: a harmless no-op where the Audio Session
+ * API is unavailable (today that's everything except iOS Safari 16.4+; Chromium,
+ * incl. Chrome/Brave on Android, doesn't implement it yet).
+ */
+function enableDucking(): void {
+  if (typeof navigator === "undefined") return;
+  const session = (navigator as { audioSession?: { type: string } }).audioSession;
+  if (!session) return;
+  try {
+    session.type = "transient";
+  } catch {
+    /* unsupported value — ignore */
+  }
+}
+
 /** Resume the audio context. Call from a click/tap handler. */
 export async function unlockAudio(): Promise<void> {
   const c = graph();
+  enableDucking();
   if (c && c.state === "suspended") {
     try {
       await c.resume();
