@@ -26,7 +26,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    // themeScript sets the `dark` class on <html> before hydration, so the
+    // server (no class) and client (class added) intentionally differ here.
+    <html lang="en" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
