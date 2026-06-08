@@ -3,10 +3,9 @@
 import { TriangleAlert, Volume2 } from "lucide-react";
 import { MAX_VOLUME } from "@/lib/audio";
 
-const MAX_PCT = Math.round(MAX_VOLUME * 100); // 125
-const SNAP_PCT = 100; // detent at 100%
-const SNAP_ZONE = 3; // ± window that sticks to the detent
-const MARKER_FRACTION = SNAP_PCT / MAX_PCT; // 0.8
+const MAX_PCT = Math.round(MAX_VOLUME * 100); // 200
+const SNAP_PCTS = [100, 125, 150, 175]; // detents the handle sticks to
+const SNAP_ZONE = 3; // ± window that sticks to a detent
 
 export default function VolumeSlider({
   label,
@@ -25,10 +24,9 @@ export default function VolumeSlider({
   const clipping = value > 1.0001;
 
   const handleChange = (rawPct: number) => {
-    // Magnetic detent: snap to exactly 100% within the snap zone.
-    const snapped =
-      Math.abs(rawPct - SNAP_PCT) <= SNAP_ZONE ? SNAP_PCT : rawPct;
-    onChange(snapped / 100);
+    // Magnetic detents: snap to the nearest stopper within the snap zone.
+    const snap = SNAP_PCTS.find((p) => Math.abs(rawPct - p) <= SNAP_ZONE);
+    onChange((snap ?? rawPct) / 100);
   };
 
   return (
@@ -49,16 +47,21 @@ export default function VolumeSlider({
         </span>
       </div>
 
-      <div className="relative">
-        {/* 100% detent line the handle sticks to */}
-        <div
-          className="pointer-events-none absolute z-10 h-3 w-0.5 rounded bg-ink/60"
-          style={{
-            top: "50%",
-            left: `calc(8px + (100% - 16px) * ${MARKER_FRACTION})`,
-            transform: "translate(-50%, -50%)",
-          }}
-        />
+      <div className="relative isolate">
+        {/* Detent lines the handle sticks to (100 / 125 / 150 / 175%).
+            `isolate` on this wrapper keeps the z-10 ticks in a local stacking
+            context so they don't bleed over the sticky Build Workout button. */}
+        {SNAP_PCTS.map((p) => (
+          <div
+            key={p}
+            className="pointer-events-none absolute z-10 h-3 w-0.5 rounded bg-ink/60"
+            style={{
+              top: "50%",
+              left: `calc(8px + (100% - 16px) * ${p / MAX_PCT})`,
+              transform: "translate(-50%, -50%)",
+            }}
+          />
+        ))}
         <input
           type="range"
           min={0}
