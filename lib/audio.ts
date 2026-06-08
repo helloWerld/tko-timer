@@ -260,10 +260,17 @@ const voiceBuffers: Partial<Record<VoiceKey, AudioBuffer>> = {};
 let voiceLoadStarted = false;
 
 // Currently-sounding voice playback, so a pause can cut a clip off mid-word and
-// a resume can replay the clip it interrupted.
+// a resume can continue it from where it stopped (buffer sources can't be
+// paused, so we track the play position and start a fresh source at that offset).
 const activeVoiceSources = new Set<AudioBufferSourceNode>();
 let currentVoiceKey: VoiceKey | null = null;
+// ctx.currentTime when the current segment began, and the buffer offset it began
+// at — together they give the live play position.
+let voiceSegmentStart = 0;
+let voiceSegmentOffset = 0;
+// Clip a pause cut off, and how far into it we were, for resume to continue.
 let interruptedVoiceKey: VoiceKey | null = null;
+let interruptedVoiceOffset = 0;
 
 async function loadVoiceBuffers(): Promise<void> {
   const c = graph();
@@ -327,12 +334,13 @@ export function unlockVoice(): void {
 // apart, so a short window is safe.
 const lastVoiceAt: Partial<Record<VoiceKey, number>> = {};
 
-// Actually start a clip. Tracks the playback so a pause can stop it. No dedup
-// guard here, so a resume can replay a clip even if it's the same one that just
-// fired (playVoice adds the guard for the normal cue path).
-function startVoice(key: VoiceKey) {
+// Actually start a clip at `offset` seconds in (0 = from the top). Tracks the
+// playback so a pause can stop it and note the position. No dedup guard here, so
+// a resume can restart a clip mid-way even if it's the same one that just fired
+// (playVoice adds the guard for the normal cue path).
+function startVoice(key: VoiceKey, offset = 0) {
   currentVoiceKey = key;
-  // A fresh cue supersedes any clip a pause was holding to replay.
+  // A fresh cue supersedes any clip a pause was holding to resume.
   interruptedVoiceKey = null;
 
   const c = graph();
@@ -346,13 +354,15 @@ function startVoice(key: VoiceKey) {
     norm.gain.value = VOICE_GAIN[key];
     src.connect(norm).connect(voiceGain);
     activeVoiceSources.add(src);
+    voiceSegmentStart = c.currentTime;
+    voiceSegmentOffset = offset;
     src.onended = () => {
       activeVoiceSources.delete(src);
       if (currentVoiceKey === key && activeVoiceSources.size === 0) {
         currentVoiceKey = null;
       }
     };
-    src.start();
+    src.start(0, offset);
     return;
   }
   // Fallback: HTML <audio> element (volume capped at 1.0).
@@ -360,7 +370,7 @@ function startVoice(key: VoiceKey) {
   if (!el) return;
   try {
     el.volume = Math.min(1, voiceVolume);
-    el.currentTime = 0;
+    el.currentTime = offset;
     el.onended = () => {
       if (currentVoiceKey === key) currentVoiceKey = null;
     };
@@ -378,11 +388,22 @@ function playVoice(key: VoiceKey) {
 }
 
 /**
- * Pause: silence any voice clip mid-playback and remember it, so a later resume
- * can replay it from the start. Beeps are too short (≤0.45s) to be worth stopping.
+ * Pause: silence any voice clip mid-playback and remember it plus how far in we
+ * were, so resume can continue from that point (keeping the cue aligned with the
+ * countdown beeps). Beeps are too short (≤0.45s) to be worth stopping.
  */
 export function pauseVoice(): void {
   interruptedVoiceKey = currentVoiceKey;
+  // Capture the live play position before tearing the source down.
+  if (currentVoiceKey && activeVoiceSources.size > 0 && ctx) {
+    interruptedVoiceOffset = voiceSegmentOffset + (ctx.currentTime - voiceSegmentStart);
+  } else if (currentVoiceKey) {
+    // Fallback element path: read its position directly.
+    interruptedVoiceOffset = voiceEls[currentVoiceKey]?.currentTime ?? 0;
+  } else {
+    interruptedVoiceOffset = 0;
+  }
+
   activeVoiceSources.forEach((src) => {
     try {
       src.onended = null;
@@ -392,11 +413,11 @@ export function pauseVoice(): void {
     }
   });
   activeVoiceSources.clear();
+  // Pause the fallback elements but keep their position for resume.
   (Object.values(voiceEls) as HTMLAudioElement[]).forEach((el) => {
     if (el && !el.paused) {
       try {
         el.pause();
-        el.currentTime = 0;
       } catch {
         /* ignore */
       }
@@ -405,11 +426,17 @@ export function pauseVoice(): void {
   currentVoiceKey = null;
 }
 
-/** Resume: replay the clip a pause cut off, from the start (if there was one). */
+/** Resume: continue the clip a pause cut off, from where it left off (if any). */
 export function resumeVoice(): void {
   const key = interruptedVoiceKey;
+  const offset = interruptedVoiceOffset;
   interruptedVoiceKey = null;
-  if (key) startVoice(key);
+  interruptedVoiceOffset = 0;
+  if (!key) return;
+  // If the pause landed at (or past) the clip's end, there's nothing to resume.
+  const buffer = voiceBuffers[key];
+  if (buffer && offset >= buffer.duration - 0.05) return;
+  startVoice(key, offset);
 }
 
 /** "Get ready" — played at the start of the prep / Get Ready screen. */
