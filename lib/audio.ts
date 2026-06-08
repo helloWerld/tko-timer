@@ -16,7 +16,7 @@ let voiceGain: GainNode | null = null;
 
 // Volumes, 0..MAX_VOLUME. Beeps default loud (they were quieter than music
 // players). Going above 1.0 amplifies via the gain node and may clip.
-export const MAX_VOLUME = 1.25;
+export const MAX_VOLUME = 2;
 
 let beepVolume = 1;
 let voiceVolume = 1;
