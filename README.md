@@ -54,15 +54,9 @@ Both modes end with a **finish fanfare**.
 ### How it's wired
 
 All audio runs through one Web Audio context with two master gain nodes — one
-for beeps, one for voice — feeding a shared master **limiter** before the output
-(`lib/audio.ts`). The limiter lets the cue volumes push past unity (to cut
-through loud background music) while clamping peaks instead of hard-clipping.
-Beeps are oscillator tones. The spoken clips are decoded into Web Audio buffers
-and played through a **per-clip normalization gain** (`VOICE_GAIN`, a
-ReplayGain-style table that evens out the ~9 dB loudness spread between the
-recordings) and then the voice gain node, with an HTML `<audio>` fallback for the
-brief window before they finish decoding. The fallback can't boost above 1.0, so
-normalization applies on the decoded-buffer path only.
+for beeps, one for voice (`lib/audio.ts`). Beeps are oscillator tones. The spoken
+clips are decoded into Web Audio buffers and played through the voice gain node,
+with an HTML `<audio>` fallback for the brief window before they finish decoding.
 
 ### Volume
 
@@ -73,18 +67,12 @@ a sample. Each slider goes up to **125%** with a magnetic detent at 100% (the
 handle sticks to a marker line); above 100% a clipping warning appears, since
 amplifying past unity gain can distort.
 
-### Playing alongside background music
+### Playing alongside background music — on hold
 
-On unlock we set `navigator.audioSession.type = "transient"` (see
-`enableDucking` in `lib/audio.ts`). This is the "notification ping" mode: the OS
-briefly **ducks** other apps' audio (e.g. a music player) while our cues play,
-then restores it — so the cues stay audible over your music instead of being
-drowned out. It's feature-detected and a harmless no-op where the Audio Session
-API is unavailable (iOS Safari 16.4+ and some Chromium support it).
-
-An earlier attempt used `"ambient"`, which is the opposite lever — it marks our
-audio as incidental background and lets the system quiet *us*, which silenced the
-spoken cues.
+An earlier attempt set `navigator.audioSession.type = "ambient"` so cues would
+mix with music from another app instead of pausing it. On browsers that support
+that API it silenced the spoken cues, so it's been removed in favor of cues that
+reliably play.
 
 ## Exercise library (no database)
 
