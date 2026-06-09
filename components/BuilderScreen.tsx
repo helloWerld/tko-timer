@@ -12,6 +12,7 @@ import {
   testVoice,
 } from "@/lib/audio";
 import VolumeSlider from "./VolumeSlider";
+import IOSAudioNotice from "./IOSAudioNotice";
 import ThemeToggle from "./ThemeToggle";
 import type {
   Difficulty,
@@ -244,6 +245,7 @@ export default function BuilderScreen({
         <p className="mt-2 text-[11px] text-ink/35">
           Tap the speaker to hear a sample. Releasing a slider plays one too.
         </p>
+        <IOSAudioNotice />
       </Section>
 
       <button
