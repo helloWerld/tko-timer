@@ -2,7 +2,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { ArrowRight, Settings } from "lucide-react";
-import { FORMATS, GOALS, getFormat, scaledIntervals } from "@/lib/formats";
+import {
+  BOXING_FORMATS,
+  FORMATS,
+  GOALS,
+  getFormat,
+  scaledIntervals,
+} from "@/lib/formats";
 import {
   getVolumes,
   preloadVoice,
@@ -19,6 +25,7 @@ import type {
   Goal,
   Intensity,
   SoundMode,
+  WorkoutMode,
   WorkoutSettings,
 } from "@/lib/types";
 
@@ -43,11 +50,35 @@ export default function BuilderScreen({
   onOpenSettings: () => void;
   initial?: WorkoutSettings;
 }) {
+  const [mode, setMode] = useState<WorkoutMode>(initial?.mode ?? "strength");
   const [goal, setGoal] = useState<Goal>(initial?.goal ?? "full");
   const [formatId, setFormatId] = useState<string>(initial?.formatId ?? "hiit");
   const [difficulty, setDifficulty] = useState<Difficulty>(
     initial?.difficulty ?? "intermediate",
   );
+  const [includeSlips, setIncludeSlips] = useState<boolean>(
+    initial?.includeSlips ?? true,
+  );
+  const [includeDucks, setIncludeDucks] = useState<boolean>(
+    initial?.includeDucks ?? true,
+  );
+  const [includeFootwork, setIncludeFootwork] = useState<boolean>(
+    initial?.includeFootwork ?? true,
+  );
+
+  // Switching mode also swaps the format list, so re-point formatId at a valid
+  // format for the new mode if the current one doesn't belong to it.
+  const switchMode = (next: WorkoutMode) => {
+    setMode(next);
+    const list = next === "boxing" ? BOXING_FORMATS : FORMATS;
+    setFormatId((cur) =>
+      list.some((f) => f.id === cur)
+        ? cur
+        : next === "boxing"
+          ? BOXING_FORMATS[0].id
+          : "hiit",
+    );
+  };
   const [intensity, setIntensity] = useState<Intensity>(
     initial?.intensity ?? "medium",
   );
@@ -80,6 +111,12 @@ export default function BuilderScreen({
     return scaledIntervals(fmt, intensity);
   }, [formatId, intensity]);
 
+  const boxing = mode === "boxing";
+  const formats = boxing ? BOXING_FORMATS : FORMATS;
+  // Sections are conditional, so number them in document order at render time.
+  let stepNo = 0;
+  const step = () => (stepNo += 1);
+
   return (
     <div className="flex flex-col gap-8 pb-4 animate-slide-up">
       <header className="flex items-start justify-between pt-2">
@@ -105,27 +142,40 @@ export default function BuilderScreen({
         </div>
       </header>
 
-      <Section label="Goal" step={1}>
-        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
-          {GOALS.map((g) => (
-            <OptionCard
-              key={g.id}
-              active={goal === g.id}
-              onClick={() => setGoal(g.id)}
-            >
-              <g.icon className="h-6 w-6 text-accent" />
-              <span className="font-bold leading-tight">{g.name}</span>
-              <span className="text-[11px] font-normal text-ink/40">
-                {g.desc}
-              </span>
-            </OptionCard>
-          ))}
-        </div>
+      <Section label="Mode" step={step()} hint="Strength workout or boxing combos">
+        <Segmented
+          options={[
+            { id: "strength", label: "Strength", sub: "Bodyweight moves" },
+            { id: "boxing", label: "Boxing", sub: "Punch combos" },
+          ]}
+          value={mode}
+          onChange={(v) => switchMode(v as WorkoutMode)}
+        />
       </Section>
 
-      <Section label="Format" step={2}>
+      {!boxing && (
+        <Section label="Goal" step={step()}>
+          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+            {GOALS.map((g) => (
+              <OptionCard
+                key={g.id}
+                active={goal === g.id}
+                onClick={() => setGoal(g.id)}
+              >
+                <g.icon className="h-6 w-6 text-accent" />
+                <span className="font-bold leading-tight">{g.name}</span>
+                <span className="text-[11px] font-normal text-ink/40">
+                  {g.desc}
+                </span>
+              </OptionCard>
+            ))}
+          </div>
+        </Section>
+      )}
+
+      <Section label="Format" step={step()}>
         <div className="flex flex-col gap-2.5">
-          {FORMATS.map((f) => (
+          {formats.map((f) => (
             <button
               key={f.id}
               onClick={() => setFormatId(f.id)}
@@ -140,14 +190,22 @@ export default function BuilderScreen({
                 <span className="block text-xs text-ink/45">{f.blurb}</span>
               </span>
               <span className="text-xs font-semibold text-ink/40">
-                {f.exercisesPerRound} moves
+                {f.exercisesPerRound} {boxing ? "combos" : "moves"}
               </span>
             </button>
           ))}
         </div>
       </Section>
 
-      <Section label="Level" step={3} hint="Hardest exercises that can appear">
+      <Section
+        label="Level"
+        step={step()}
+        hint={
+          boxing
+            ? "Max punches per combo (≤3 / ≤4 / 5+)"
+            : "Hardest exercises that can appear"
+        }
+      >
         <Segmented
           options={DIFFICULTIES.map((d) => ({ id: d.id, label: d.name }))}
           value={difficulty}
@@ -155,7 +213,36 @@ export default function BuilderScreen({
         />
       </Section>
 
-      <Section label="Intensity" step={4} hint="Tunes work vs. rest length">
+      {boxing && (
+        <Section
+          label="Boxing elements"
+          step={step()}
+          hint="Add defensive moves & footwork to combos"
+        >
+          <div className="flex flex-col gap-2.5">
+            <ToggleRow
+              label="Slips & blocks"
+              desc="Combos with slips and blocks"
+              on={includeSlips}
+              onToggle={() => setIncludeSlips((v) => !v)}
+            />
+            <ToggleRow
+              label="Ducks"
+              desc="Combos with ducking under punches"
+              on={includeDucks}
+              onToggle={() => setIncludeDucks((v) => !v)}
+            />
+            <ToggleRow
+              label="Footwork"
+              desc="Combos with pivots and steps"
+              on={includeFootwork}
+              onToggle={() => setIncludeFootwork((v) => !v)}
+            />
+          </div>
+        </Section>
+      )}
+
+      <Section label="Intensity" step={step()} hint="Tunes work vs. rest length">
         <Segmented
           options={INTENSITIES.map((i) => ({
             id: i.id,
@@ -167,7 +254,7 @@ export default function BuilderScreen({
         />
       </Section>
 
-      <Section label="Duration" step={5}>
+      <Section label="Duration" step={step()}>
         <div className="rounded-2xl border border-ink/10 bg-ink/[0.03] px-4 py-4">
           <div className="flex items-baseline justify-between">
             <span className="text-sm text-ink/50">Target length</span>
@@ -188,13 +275,14 @@ export default function BuilderScreen({
             className="mt-3 w-full accent-[rgb(var(--accent-rgb))]"
           />
           <p className="mt-3 text-xs text-ink/40">
-            ≈ {preview.work}s work / {preview.rest}s rest per move
+            ≈ {preview.work}s {boxing ? "combo" : "work"} / {preview.rest}s{" "}
+            {boxing ? "active recovery" : "rest"} per {boxing ? "combo" : "move"}
             {preview.roundRest > 0 ? ` · ${preview.roundRest}s round rest` : ""}
           </p>
         </div>
       </Section>
 
-      <Section label="Warm-up & Cool-down" step={6} hint="Add stretch sections">
+      <Section label="Warm-up & Cool-down" step={step()} hint="Add stretch sections">
         <div className="flex flex-col gap-2.5">
           <ToggleRow
             label="Warm-up"
@@ -211,7 +299,7 @@ export default function BuilderScreen({
         </div>
       </Section>
 
-      <Section label="Sound" step={7} hint="Spoken cues or simple beeps">
+      <Section label="Sound" step={step()} hint="Spoken cues or simple beeps">
         <Segmented
           options={[
             { id: "voice", label: "Voice", sub: "Spoken cues" },
@@ -251,6 +339,7 @@ export default function BuilderScreen({
       <button
         onClick={() =>
           onBuild({
+            mode,
             goal,
             formatId,
             difficulty,
@@ -259,6 +348,9 @@ export default function BuilderScreen({
             soundMode,
             includeWarmup,
             includeCooldown,
+            includeSlips,
+            includeDucks,
+            includeFootwork,
           })
         }
         className="sticky bottom-4 mt-2 flex items-center justify-center gap-2 rounded-2xl brand-bg py-4 text-lg font-black shadow-lg shadow-accent/20 transition active:scale-[0.99]"

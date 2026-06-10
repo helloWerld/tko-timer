@@ -1,5 +1,7 @@
 export type Goal = "full" | "upper" | "lower" | "core" | "cardio";
 
+export type WorkoutMode = "strength" | "boxing";
+
 export type Difficulty = "beginner" | "intermediate" | "advanced";
 
 export type Intensity = "low" | "medium" | "high";
@@ -11,6 +13,7 @@ export type IntervalKind =
   | "warmup"
   | "work"
   | "rest"
+  | "recovery"
   | "roundRest"
   | "cooldown";
 
@@ -56,6 +59,8 @@ export interface IntervalStep {
 }
 
 export interface WorkoutSettings {
+  /** Strength/conditioning workout vs. boxing combos. */
+  mode: WorkoutMode;
   goal: Goal;
   formatId: string;
   difficulty: Difficulty;
@@ -68,6 +73,12 @@ export interface WorkoutSettings {
   includeWarmup: boolean;
   /** Include a static cool-down stretch section after the main work. */
   includeCooldown: boolean;
+  /** Boxing only — allow combos with slips/blocks. */
+  includeSlips: boolean;
+  /** Boxing only — allow combos with ducks. */
+  includeDucks: boolean;
+  /** Boxing only — allow combos with footwork (pivots/steps). */
+  includeFootwork: boolean;
 }
 
 export interface GeneratedWorkout {

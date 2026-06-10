@@ -8,6 +8,7 @@ import WorkoutScreen from "@/components/WorkoutScreen";
 import CompleteScreen from "@/components/CompleteScreen";
 import SettingsScreen from "@/components/SettingsScreen";
 import { generateWorkout } from "@/lib/generateWorkout";
+import { generateBoxingWorkout } from "@/lib/generateBoxingWorkout";
 import { activeExercises } from "@/lib/exerciseStore";
 import { useExerciseStore } from "@/lib/useExerciseStore";
 import type { GeneratedWorkout, WorkoutSettings } from "@/lib/types";
@@ -44,7 +45,11 @@ export default function Home() {
 
   const handleBuild = useCallback(
     (settings: WorkoutSettings) => {
-      setWorkout(generateWorkout(settings, activeExercises(store)));
+      setWorkout(
+        settings.mode === "boxing"
+          ? generateBoxingWorkout(settings)
+          : generateWorkout(settings, activeExercises(store)),
+      );
       setPhase("preview");
     },
     [store],
@@ -52,7 +57,11 @@ export default function Home() {
 
   const handleRegenerate = useCallback(() => {
     setWorkout((w) =>
-      w ? generateWorkout(w.settings, activeExercises(store)) : w,
+      w
+        ? w.settings.mode === "boxing"
+          ? generateBoxingWorkout(w.settings)
+          : generateWorkout(w.settings, activeExercises(store))
+        : w,
     );
   }, [store]);
 

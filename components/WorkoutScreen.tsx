@@ -109,6 +109,7 @@ export default function WorkoutScreen({
       if (voice) longGoBeep();
       else goCue();
     } else if (s.kind === "rest" || s.kind === "roundRest") restCue();
+    else if (s.kind === "recovery") stretchCue();
     else if (s.kind === "warmup" || s.kind === "cooldown") stretchCue();
     else if (s.kind === "prep" && voice) getReadyVoice();
   }, [stepIndex, steps, voice]);
@@ -158,7 +159,11 @@ export default function WorkoutScreen({
             if (half > 5 && ceil <= half) fireOnce("half", halfwayVoice);
             if (s.seconds >= 6 && ceil <= 5) fireOnce("count", countdownToWorkVoice);
             if (ceil <= 5 && ceil >= 1) countdownCue();
-          } else if (s.kind === "rest" || s.kind === "roundRest") {
+          } else if (
+            s.kind === "rest" ||
+            s.kind === "roundRest" ||
+            s.kind === "recovery"
+          ) {
             if (s.seconds >= 4 && ceil <= 3) fireOnce("count", restEndVoice);
             if (ceil <= 3 && ceil >= 1) countdownCue();
           } else if (s.kind === "prep") {
@@ -285,15 +290,17 @@ export default function WorkoutScreen({
         >
           {step.kind === "work"
             ? "Work"
-            : step.kind === "warmup"
-              ? "Warm-Up"
-              : step.kind === "cooldown"
-                ? "Cool-Down"
-                : step.kind === "prep"
-                  ? "Get Ready"
-                  : step.kind === "roundRest"
-                    ? "Round Rest"
-                    : "Rest"}
+            : step.kind === "recovery"
+              ? "Active Recovery"
+              : step.kind === "warmup"
+                ? "Warm-Up"
+                : step.kind === "cooldown"
+                  ? "Cool-Down"
+                  : step.kind === "prep"
+                    ? "Get Ready"
+                    : step.kind === "roundRest"
+                      ? "Round Rest"
+                      : "Rest"}
         </p>
 
         {/* Timer ring */}
@@ -514,6 +521,15 @@ function stepTheme(step: IntervalStep) {
       bg: "from-[var(--prep-bg)] via-[color:var(--bg)] to-[color:var(--bg)]",
       label: "text-[color:var(--prep-fg)]",
       stroke: "text-[color:var(--prep-fg)]",
+    };
+  }
+  if (step.kind === "recovery") {
+    // Active recovery: borrow the warm-up palette so it reads as "keep moving"
+    // rather than the passive rest tint.
+    return {
+      bg: "from-[var(--warm-bg)] via-[color:var(--bg)] to-[color:var(--bg)]",
+      label: "text-[color:var(--warm-fg)]",
+      stroke: "text-[color:var(--warm-fg)]",
     };
   }
   return {

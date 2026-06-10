@@ -19,12 +19,14 @@ export default function PreviewScreen({
   onStart: () => void;
 }) {
   const { settings, format, steps, rounds, totalSeconds } = workout;
+  const boxing = settings.mode === "boxing";
   const goal = GOALS.find((g) => g.id === settings.goal);
 
-  // Group the main work steps by round for display.
+  // Group the main work steps by round for display. In boxing mode the active
+  // recovery steps are shown too, so the interleave is visible.
   const byRound = new Map<number, IntervalStep[]>();
   for (const s of steps) {
-    if (s.kind !== "work") continue;
+    if (s.kind !== "work" && s.kind !== "recovery") continue;
     const list = byRound.get(s.round) ?? [];
     list.push(s);
     byRound.set(s.round, list);
@@ -57,8 +59,14 @@ export default function PreviewScreen({
           {format.name}
         </p>
         <h1 className="flex items-center gap-2 text-3xl font-black">
-          {goal?.icon && <goal.icon className="h-7 w-7 text-accent" />}
-          {goal?.name}
+          {boxing ? (
+            "Boxing"
+          ) : (
+            <>
+              {goal?.icon && <goal.icon className="h-7 w-7 text-accent" />}
+              {goal?.name}
+            </>
+          )}
         </h1>
         <div className="mt-3 flex flex-wrap gap-2">
           <Stat label="Time" value={formatClock(totalSeconds)} />
@@ -83,15 +91,17 @@ export default function PreviewScreen({
               Round {round}
             </h3>
             <ol className="space-y-1.5">
-              {list
-                .filter((s) => s.kind === "work")
-                .map((s, i) => (
-                  <ExerciseItem
-                    key={i}
-                    step={s}
-                    accent="text-accent"
-                  />
-                ))}
+              {list.map((s, i) => (
+                <ExerciseItem
+                  key={i}
+                  step={s}
+                  accent={
+                    s.kind === "recovery"
+                      ? "text-[color:var(--warm-fg)]"
+                      : "text-accent"
+                  }
+                />
+              ))}
             </ol>
           </div>
         ))}

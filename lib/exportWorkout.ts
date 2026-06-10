@@ -26,6 +26,8 @@ function sectionFor(step: IntervalStep): string {
 
 /** The "exercise" column for a step. */
 function nameFor(step: IntervalStep): string {
+  if (step.kind === "recovery" && step.exercise)
+    return `${step.exercise.name} (active recovery)`;
   if (step.exercise) return step.exercise.name;
   if (step.kind === "rest") return "Rest";
   if (step.kind === "roundRest") return "Round Rest";
@@ -39,15 +41,29 @@ function nameFor(step: IntervalStep): string {
  */
 export function buildWorkoutExport(workout: GeneratedWorkout): string {
   const { settings, format } = workout;
-  const goal = GOALS.find((g) => g.id === settings.goal)?.name ?? settings.goal;
+  const boxing = settings.mode === "boxing";
+  const goal = boxing
+    ? "Boxing"
+    : (GOALS.find((g) => g.id === settings.goal)?.name ?? settings.goal);
 
   const L: string[] = [];
   L.push("TKO Timer Workout");
   L.push("=================");
   L.push("");
-  L.push(`Goal:        ${goal}`);
+  L.push(`${boxing ? "Mode:        Boxing" : `Goal:        ${goal}`}`);
   L.push(`Format:      ${format.name}`);
   L.push(`Level:       ${cap(settings.difficulty)}`);
+  if (boxing) {
+    const els =
+      [
+        settings.includeSlips && "Slips/Blocks",
+        settings.includeDucks && "Ducks",
+        settings.includeFootwork && "Footwork",
+      ]
+        .filter(Boolean)
+        .join(", ") || "Punches only";
+    L.push(`Elements:    ${els}`);
+  }
   L.push(`Intensity:   ${cap(settings.intensity)}`);
   L.push(`Target:      ${settings.targetMinutes} min`);
   L.push(`Warm-up:     ${settings.includeWarmup ? "Yes" : "No"}`);
@@ -80,7 +96,8 @@ export function buildWorkoutExport(workout: GeneratedWorkout): string {
 
 /** A safe-ish filename for the export, e.g. tko-timer-full-body-2026-06-08.txt */
 export function exportFileName(workout: GeneratedWorkout): string {
-  const goalSlug = workout.settings.goal;
+  const slug =
+    workout.settings.mode === "boxing" ? "boxing" : workout.settings.goal;
   const date = new Date().toISOString().slice(0, 10);
-  return `tko-timer-${goalSlug}-${date}.txt`;
+  return `tko-timer-${slug}-${date}.txt`;
 }

@@ -25,6 +25,8 @@ export default function CompleteScreen({
   onNew: () => void;
 }) {
   const goal = GOALS.find((g) => g.id === workout.settings.goal);
+  const modeLabel =
+    workout.settings.mode === "boxing" ? "Boxing" : (goal?.name ?? "");
   const workSteps = workout.steps.filter((s) => s.kind === "work").length;
   const [copied, setCopied] = useState(false);
 
@@ -44,7 +46,7 @@ export default function CompleteScreen({
   const email = () => {
     const text = buildWorkoutExport(workout);
     const subject = encodeURIComponent(
-      `TKO Timer Workout — ${goal?.name ?? ""} (${workout.format.name})`,
+      `TKO Timer Workout — ${modeLabel} (${workout.format.name})`,
     );
     const body = encodeURIComponent(text);
     window.location.href = `mailto:?subject=${subject}&body=${body}`;
@@ -70,7 +72,7 @@ export default function CompleteScreen({
           </span>
         </h1>
         <p className="mt-2 text-ink/55">
-          {goal?.name} · {workout.format.name}
+          {modeLabel} · {workout.format.name}
         </p>
       </div>
 

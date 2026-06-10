@@ -56,8 +56,57 @@ export const FORMATS: WorkoutFormat[] = [
   },
 ];
 
+/**
+ * Boxing formats. Same shape as strength formats, but the fields read as:
+ * baseWork = seconds per combo, exercisesPerRound = combos per round,
+ * baseRest = active-recovery length between combos, baseRoundRest = passive
+ * rest between rounds (breathe / water).
+ */
+export const BOXING_FORMATS: WorkoutFormat[] = [
+  {
+    id: "box-rounds",
+    name: "Boxing Rounds",
+    blurb: "30s combos with active recovery, rest between rounds.",
+    baseWork: 30,
+    baseRest: 15,
+    exercisesPerRound: 5,
+    baseRoundRest: 60,
+  },
+  {
+    id: "box-speed",
+    name: "Speed Bursts",
+    blurb: "Sharp 20s combos, quick 10s recoveries.",
+    baseWork: 20,
+    baseRest: 10,
+    exercisesPerRound: 6,
+    baseRoundRest: 45,
+  },
+  {
+    id: "box-technical",
+    name: "Technical",
+    blurb: "Longer 45s combos to drill clean technique.",
+    baseWork: 45,
+    baseRest: 20,
+    exercisesPerRound: 4,
+    baseRoundRest: 60,
+  },
+  {
+    id: "box-conditioning",
+    name: "Conditioning",
+    blurb: "Continuous 40s work, short active recovery.",
+    baseWork: 40,
+    baseRest: 15,
+    exercisesPerRound: 6,
+    baseRoundRest: 50,
+  },
+];
+
 export function getFormat(id: string): WorkoutFormat {
-  return FORMATS.find((f) => f.id === id) ?? FORMATS[0];
+  return (
+    FORMATS.find((f) => f.id === id) ??
+    BOXING_FORMATS.find((f) => f.id === id) ??
+    FORMATS[0]
+  );
 }
 
 /**
