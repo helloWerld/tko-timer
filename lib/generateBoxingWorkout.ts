@@ -7,9 +7,10 @@ import {
   RECOVERY_MOVES,
   boxingComboPool,
   comboToExercise,
+  type BoxingCombo,
 } from "./boxing";
 import { getFormat, scaledIntervals } from "./formats";
-import { clamp, pickSequence } from "./generateWorkout";
+import { clamp, pickSequence, shuffle } from "./generateWorkout";
 import type {
   Exercise,
   GeneratedWorkout,
@@ -20,6 +21,25 @@ import type {
 const PREP_SECONDS = 10;
 const WARMUP_HOLD = 30;
 const COOLDOWN_HOLD = 30;
+
+/** Sample `count` combos from the pool, cycling a reshuffled bag (allows
+ * repeats only when the pool is smaller than count). */
+function sampleCombos(pool: BoxingCombo[], count: number): BoxingCombo[] {
+  const out: BoxingCombo[] = [];
+  if (pool.length === 0) return out;
+  let bag: BoxingCombo[] = [];
+  while (out.length < count) {
+    if (bag.length === 0) bag = shuffle(pool);
+    out.push(bag.shift()!);
+  }
+  return out;
+}
+
+/** Easiest-first: fewer punches, then fewer total moves. Drives the round
+ * progression so early rounds are simpler than later ones. */
+function byProgression(a: BoxingCombo, b: BoxingCombo): number {
+  return a.punches - b.punches || a.moves - b.moves;
+}
 
 /**
  * Boxing-mode generator. Mirrors generateWorkout's timing math, but work steps
@@ -48,14 +68,30 @@ export function generateBoxingWorkout(
     totalTarget - PREP_SECONDS - warmupSeconds - cooldownSeconds;
   const rounds = Math.max(1, Math.round(mainTarget / roundCost));
 
-  // Combo pool for the chosen level + enabled elements; convert to the Exercise
-  // shape the timeline renders. Recovery moves are drawn from their own pool.
+  // Combo pool for the chosen level + enabled elements.
   const comboPool = boxingComboPool(settings.difficulty, {
     includeSlips: settings.includeSlips,
     includeDucks: settings.includeDucks,
     includeFootwork: settings.includeFootwork,
-  }).map(comboToExercise);
-  const picks = pickSequence(comboPool, rounds * perRound);
+  });
+
+  // Build the per-round combo sets, then flatten in round order.
+  //  - Interval formats repeat one fixed (easy→hard) set every round.
+  //  - Other formats sample the whole workout then sort easy→hard, so the
+  //    earliest rounds get the simplest combos and later rounds the longest.
+  let roundSets: BoxingCombo[][];
+  if (format.repeat) {
+    const base = sampleCombos(comboPool, perRound).sort(byProgression);
+    roundSets = Array.from({ length: rounds }, () => base);
+  } else {
+    const sample = sampleCombos(comboPool, rounds * perRound).sort(
+      byProgression,
+    );
+    roundSets = Array.from({ length: rounds }, (_, r) =>
+      sample.slice(r * perRound, (r + 1) * perRound),
+    );
+  }
+  const picks: Exercise[] = roundSets.flat().map(comboToExercise);
   // One recovery move per inter-combo gap: (perRound - 1) per round.
   const recoveryPicks = pickSequence(
     RECOVERY_MOVES,

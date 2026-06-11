@@ -43,6 +43,11 @@ export interface WorkoutFormat {
   exercisesPerRound: number;
   /** Rest between rounds in seconds (0 = none). */
   baseRoundRest: number;
+  /**
+   * Boxing only — when true the same set of combos repeats every round
+   * (interval-style) instead of drawing fresh combos each round.
+   */
+  repeat?: boolean;
 }
 
 /** A single timeline entry the timer counts through. */

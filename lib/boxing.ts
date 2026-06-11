@@ -17,10 +17,15 @@ export interface BoxingCombo {
   notation: string;
   /** Number of strikes (numeric tokens, incl. body variants like 1B). */
   punches: number;
+  /** Total moves: every token, i.e. punches + slips/blocks/ducks/footwork. */
+  moves: number;
   hasSlipBlock: boolean;
   hasDuck: boolean;
   hasFootwork: boolean;
-  /** Derived from punch count, acts as a ceiling in the builder. */
+  /**
+   * Level ceiling, derived from total move count: Beginner ≤3 moves,
+   * Intermediate ≤4 moves (incl. slips/footwork), Advanced = anything.
+   */
   difficulty: Difficulty;
 }
 
@@ -42,24 +47,26 @@ function slug(s: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
-function difficultyFor(punches: number): Difficulty {
-  if (punches <= 3) return "beginner";
-  if (punches === 4) return "intermediate";
+function difficultyFor(moves: number): Difficulty {
+  if (moves <= 3) return "beginner";
+  if (moves === 4) return "intermediate";
   return "advanced";
 }
 
 function parseCombo(name: string, notation: string): BoxingCombo {
   const tokens = notation.split("-").map((t) => t.trim());
   const punches = tokens.filter((t) => PUNCH.test(t)).length;
+  const moves = tokens.length;
   return {
     id: `box-${slug(name)}`,
     name,
     notation,
     punches,
+    moves,
     hasSlipBlock: tokens.some((t) => SLIP_BLOCK.has(t)),
     hasDuck: tokens.some((t) => DUCK.has(t)),
     hasFootwork: tokens.some((t) => FOOTWORK.has(t)),
-    difficulty: difficultyFor(punches),
+    difficulty: difficultyFor(moves),
   };
 }
 
