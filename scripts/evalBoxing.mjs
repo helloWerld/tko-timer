@@ -122,11 +122,15 @@ for (const fmt of BOXING_FORMATS) {
           const roundNums = [...workByRound.keys()].sort((a, b) => a - b);
 
           if (fmt.repeat) {
-            // Interval format: every round must repeat the same combo sequence.
+            // Interval format: every round repeats the same combo sequence, and
+            // that sequence itself progresses easy→hard within the round.
             const sig = (r) => workByRound.get(r).map((s) => s.exercise.id).join("|");
             const first = sig(roundNums[0]);
             if (!roundNums.every((r) => sig(r) === first))
               fail(`${fmt.id}: interval rounds are not identical`);
+            const within = workByRound.get(roundNums[0]).map(punchesOf);
+            for (let i = 1; i < within.length; i++)
+              if (within[i] < within[i - 1]) { fail(`${fmt.id}/${difficulty}: interval set not progressive within the round`); break; }
           } else {
             // Progression: punches must be non-decreasing across the whole
             // work sequence (early rounds simpler than later ones).
