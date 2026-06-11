@@ -24,6 +24,7 @@ import type {
   Difficulty,
   Goal,
   Intensity,
+  RecoveryStyle,
   SoundMode,
   WorkoutMode,
   WorkoutSettings,
@@ -64,6 +65,9 @@ export default function BuilderScreen({
   );
   const [includeFootwork, setIncludeFootwork] = useState<boolean>(
     initial?.includeFootwork ?? true,
+  );
+  const [recoveryStyle, setRecoveryStyle] = useState<RecoveryStyle>(
+    initial?.recoveryStyle ?? "active",
   );
 
   // Switching mode also swaps the format list, so re-point formatId at a valid
@@ -202,7 +206,7 @@ export default function BuilderScreen({
         step={step()}
         hint={
           boxing
-            ? "Max punches per combo (≤3 / ≤4 / 5+)"
+            ? "Max moves per combo (≤3 / ≤4 / any)"
             : "Hardest exercises that can appear"
         }
       >
@@ -239,6 +243,23 @@ export default function BuilderScreen({
               onToggle={() => setIncludeFootwork((v) => !v)}
             />
           </div>
+        </Section>
+      )}
+
+      {boxing && (
+        <Section
+          label="Recovery"
+          step={step()}
+          hint="Between combos"
+        >
+          <Segmented
+            options={[
+              { id: "active", label: "Active recovery", sub: "Recovery moves" },
+              { id: "rest", label: "Rest only", sub: "Just breathe" },
+            ]}
+            value={recoveryStyle}
+            onChange={(v) => setRecoveryStyle(v as RecoveryStyle)}
+          />
         </Section>
       )}
 
@@ -351,6 +372,7 @@ export default function BuilderScreen({
             includeSlips,
             includeDucks,
             includeFootwork,
+            recoveryStyle,
           })
         }
         className="sticky bottom-4 mt-2 flex items-center justify-center gap-2 rounded-2xl brand-bg py-4 text-lg font-black shadow-lg shadow-accent/20 transition active:scale-[0.99]"

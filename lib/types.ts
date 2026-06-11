@@ -2,6 +2,9 @@ export type Goal = "full" | "upper" | "lower" | "core" | "cardio";
 
 export type WorkoutMode = "strength" | "boxing";
 
+/** Boxing only — what fills the short gaps between combos. */
+export type RecoveryStyle = "active" | "rest";
+
 export type Difficulty = "beginner" | "intermediate" | "advanced";
 
 export type Intensity = "low" | "medium" | "high";
@@ -84,6 +87,8 @@ export interface WorkoutSettings {
   includeDucks: boolean;
   /** Boxing only — allow combos with footwork (pivots/steps). */
   includeFootwork: boolean;
+  /** Boxing only — active recovery moves vs. plain rest between combos. */
+  recoveryStyle: RecoveryStyle;
 }
 
 export interface GeneratedWorkout {

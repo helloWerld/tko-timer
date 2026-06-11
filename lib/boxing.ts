@@ -22,6 +22,8 @@ export interface BoxingCombo {
   hasSlipBlock: boolean;
   hasDuck: boolean;
   hasFootwork: boolean;
+  /** Contains an overhand (7 or 8). */
+  hasOverhand: boolean;
   /**
    * Level ceiling, derived from total move count: Beginner ≤3 moves,
    * Intermediate ≤4 moves (incl. slips/footwork), Advanced = anything.
@@ -38,6 +40,7 @@ const difficultyRank: Record<Difficulty, number> = {
 const SLIP_BLOCK = new Set(["SL", "SR", "BL", "BR"]);
 const DUCK = new Set(["DL", "DR"]);
 const FOOTWORK = new Set(["PL", "PR", "STL", "STR"]);
+const OVERHAND = new Set(["7", "8"]);
 const PUNCH = /^[1-8]B?$/;
 
 function slug(s: string): string {
@@ -66,8 +69,18 @@ function parseCombo(name: string, notation: string): BoxingCombo {
     hasSlipBlock: tokens.some((t) => SLIP_BLOCK.has(t)),
     hasDuck: tokens.some((t) => DUCK.has(t)),
     hasFootwork: tokens.some((t) => FOOTWORK.has(t)),
+    hasOverhand: tokens.some((t) => OVERHAND.has(t)),
     difficulty: difficultyFor(moves),
   };
+}
+
+/**
+ * A "basic" combo for opening a workout: straight punches only (no slips,
+ * blocks, ducks, footwork), no overhands (7/8), and short (≤3 moves). E.g.
+ * Jab (1), Jab-Cross (1-2), Cross-Lead Hook (2-3).
+ */
+export function isBasicCombo(c: BoxingCombo): boolean {
+  return c.punches === c.moves && !c.hasOverhand && c.moves <= 3;
 }
 
 /** Raw combo list — one "Name (notation)" per line. Group headers are ignored. */

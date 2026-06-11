@@ -1,5 +1,5 @@
 // Eval harness for boxing mode. Run with: npx tsx scripts/evalBoxing.mjs
-import { BOXING_COMBOS, RECOVERY_MOVES, boxingComboPool } from "../lib/boxing.ts";
+import { BOXING_COMBOS, RECOVERY_MOVES, boxingComboPool, isBasicCombo } from "../lib/boxing.ts";
 import { BOXING_FORMATS, scaledIntervals } from "../lib/formats.ts";
 import { generateBoxingWorkout } from "../lib/generateBoxingWorkout.ts";
 
@@ -62,6 +62,9 @@ const badRule = BOXING_COMBOS.filter((c) => {
 });
 if (badRule.length) fail(`${badRule.length} combos violate the move-count level rule`);
 else ok("difficulty matches move-count rule for all combos");
+const basics = BOXING_COMBOS.filter(isBasicCombo);
+console.log(`  ${basics.length} basic combos available to open rounds`);
+if (basics.length < 6) fail("too few basic combos to fill an opening round");
 
 // ---- 2. Pool filtering ----
 console.log("\n[2] Pool filtering");
@@ -91,68 +94,89 @@ const base = {
 };
 let combos = 0;
 const toggles = [allOn, allOff, { includeSlips: true, includeDucks: false, includeFootwork: false }];
-const comboByNotation = new Map(BOXING_COMBOS.map((c) => [c.notation, c]));
-const punchesOf = (step) => comboByNotation.get(step.exercise?.cue)?.punches ?? 0;
+const comboByName = new Map(BOXING_COMBOS.map((c) => [c.name, c]));
+const comboOf = (step) => comboByName.get(step.exercise?.name);
+const punchesOf = (step) => comboOf(step)?.punches ?? 0;
 for (const fmt of BOXING_FORMATS) {
   for (const difficulty of ["beginner", "intermediate", "advanced"]) {
     for (const intensity of ["low", "medium", "high"]) {
       for (const t of toggles) {
-        for (const targetMinutes of [5, 20, 45]) {
-          combos++;
-          const settings = { ...base, formatId: fmt.id, difficulty, intensity, targetMinutes, ...t };
-          const w = generateBoxingWorkout(settings);
-          const comboIds = new Set(boxingComboPool(difficulty, t).map((c) => c.id));
-          const recoveryIds = new Set(RECOVERY_MOVES.map((m) => m.id));
-          for (const s of w.steps) {
-            if (s.kind === "work") {
-              if (!comboIds.has(s.exercise?.id)) fail(`${fmt.id}/${difficulty}: work step combo not in pool`);
-            } else if (s.kind === "recovery") {
-              if (!s.exercise || !recoveryIds.has(s.exercise.id)) fail(`${fmt.id}: recovery step missing recovery move`);
-            } else if (s.kind === "roundRest") {
-              if (s.exercise) fail(`${fmt.id}: roundRest should be passive (no exercise)`);
+        for (const recoveryStyle of ["active", "rest"]) {
+          for (const targetMinutes of [5, 20, 45]) {
+            combos++;
+            const settings = { ...base, formatId: fmt.id, difficulty, intensity, targetMinutes, recoveryStyle, ...t };
+            const w = generateBoxingWorkout(settings);
+            const comboIds = new Set(boxingComboPool(difficulty, t).map((c) => c.id));
+            const recoveryIds = new Set(RECOVERY_MOVES.map((m) => m.id));
+            for (const s of w.steps) {
+              if (s.kind === "work") {
+                if (!comboIds.has(s.exercise?.id)) fail(`${fmt.id}/${difficulty}: work step combo not in pool`);
+              } else if (s.kind === "recovery") {
+                if (recoveryStyle !== "active") fail(`${fmt.id}: recovery step present in rest-only mode`);
+                if (!s.exercise || !recoveryIds.has(s.exercise.id)) fail(`${fmt.id}: recovery step missing recovery move`);
+              } else if (s.kind === "roundRest") {
+                if (s.exercise) fail(`${fmt.id}: roundRest should be passive (no exercise)`);
+              }
             }
-          }
+            // Rest-only mode: no active-recovery steps anywhere.
+            if (recoveryStyle === "rest" && w.steps.some((s) => s.kind === "recovery"))
+              fail(`${fmt.id}: rest-only mode still produced active recovery`);
 
-          // Group work steps by round.
-          const workByRound = new Map();
-          for (const s of w.steps) {
-            if (s.kind !== "work") continue;
-            (workByRound.get(s.round) ?? workByRound.set(s.round, []).get(s.round)).push(s);
-          }
-          const roundNums = [...workByRound.keys()].sort((a, b) => a - b);
+            // Group steps by round.
+            const workByRound = new Map();
+            const recByRound = new Map();
+            for (const s of w.steps) {
+              if (s.kind === "work") (workByRound.get(s.round) ?? workByRound.set(s.round, []).get(s.round)).push(s);
+              if (s.kind === "recovery") (recByRound.get(s.round) ?? recByRound.set(s.round, []).get(s.round)).push(s);
+            }
+            const roundNums = [...workByRound.keys()].sort((a, b) => a - b);
 
-          if (fmt.repeat) {
-            // Interval format: every round repeats the same combo sequence, and
-            // that sequence itself progresses easy→hard within the round.
-            const sig = (r) => workByRound.get(r).map((s) => s.exercise.id).join("|");
-            const first = sig(roundNums[0]);
-            if (!roundNums.every((r) => sig(r) === first))
-              fail(`${fmt.id}: interval rounds are not identical`);
-            const within = workByRound.get(roundNums[0]).map(punchesOf);
-            for (let i = 1; i < within.length; i++)
-              if (within[i] < within[i - 1]) { fail(`${fmt.id}/${difficulty}: interval set not progressive within the round`); break; }
-          } else {
-            // Progression: punches must be non-decreasing across the whole
-            // work sequence (early rounds simpler than later ones).
-            const seq = w.steps.filter((s) => s.kind === "work").map(punchesOf);
-            for (let i = 1; i < seq.length; i++)
-              if (seq[i] < seq[i - 1]) { fail(`${fmt.id}/${difficulty}: progression not monotonic`); break; }
-          }
+            // Round 1 / interval opener must be basic punches (no overhands/complex).
+            const round1 = workByRound.get(roundNums[0]).map(comboOf);
+            if (fmt.repeat) {
+              if (!isBasicCombo(round1[0])) fail(`${fmt.id}/${difficulty}: interval set does not open with a basic combo`);
+            } else if (!round1.every((c) => isBasicCombo(c))) {
+              fail(`${fmt.id}/${difficulty}: round 1 is not all basics`);
+            }
 
-          // Round count is integer, so the best achievable is within one
-          // round-block of the target. (Tiny targets + long formats are forced
-          // to a single round — same constraint as the strength generator.)
-          const { work: w2, rest: r2, roundRest: rr2 } = scaledIntervals(fmt, intensity);
-          const roundCost = fmt.exercisesPerRound * w2 + (fmt.exercisesPerRound - 1) * r2 + rr2;
-          if (Math.abs(w.totalSeconds - targetMinutes * 60) > roundCost + 5)
-            fail(`${fmt.id}/${difficulty}/${intensity}/${targetMinutes}m: total ${w.totalSeconds}s further than one round (${roundCost}s) from target`);
+            if (fmt.repeat) {
+              // Interval format: every round repeats the same combo sequence,
+              // progressing easy→hard within the round.
+              const sig = (m, r) => m.get(r).map((s) => s.exercise.id).join("|");
+              const firstWork = sig(workByRound, roundNums[0]);
+              if (!roundNums.every((r) => sig(workByRound, r) === firstWork))
+                fail(`${fmt.id}: interval combos not identical across rounds`);
+              const within = workByRound.get(roundNums[0]).map(punchesOf);
+              for (let i = 1; i < within.length; i++)
+                if (within[i] < within[i - 1]) { fail(`${fmt.id}/${difficulty}: interval set not progressive within the round`); break; }
+              // Recovery also repeats identically each round (req 3).
+              if (recoveryStyle === "active" && recByRound.size > 0) {
+                const firstRec = sig(recByRound, [...recByRound.keys()].sort((a, b) => a - b)[0]);
+                if (![...recByRound.keys()].every((r) => sig(recByRound, r) === firstRec))
+                  fail(`${fmt.id}: interval recovery not identical across rounds`);
+              }
+            } else {
+              // Rounds 2..N progress easy→hard (round 1 is the basics opener).
+              const later = roundNums.slice(1).flatMap((r) => workByRound.get(r).map(punchesOf));
+              for (let i = 1; i < later.length; i++)
+                if (later[i] < later[i - 1]) { fail(`${fmt.id}/${difficulty}: rounds 2+ not progressive`); break; }
+            }
+
+            // Round count is integer, so the best achievable is within one
+            // round-block of the target. (Tiny targets + long formats are forced
+            // to a single round — same constraint as the strength generator.)
+            const { work: w2, rest: r2, roundRest: rr2 } = scaledIntervals(fmt, intensity);
+            const roundCost = fmt.exercisesPerRound * w2 + (fmt.exercisesPerRound - 1) * r2 + rr2;
+            if (Math.abs(w.totalSeconds - targetMinutes * 60) > roundCost + 5)
+              fail(`${fmt.id}/${difficulty}/${intensity}/${targetMinutes}m: total ${w.totalSeconds}s further than one round (${roundCost}s) from target`);
+          }
         }
       }
     }
   }
 }
 console.log(`  exercised ${combos} setting combinations`);
-if (!failures) ok("all generated workouts satisfy invariants (progression + intervals)");
+if (!failures) ok("all workouts satisfy invariants (basics opener · progression · intervals · recovery style)");
 
 // ---- 4. Format config ----
 console.log("\n[4] Format config");

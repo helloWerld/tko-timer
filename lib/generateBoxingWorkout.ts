@@ -7,6 +7,7 @@ import {
   RECOVERY_MOVES,
   boxingComboPool,
   comboToExercise,
+  isBasicCombo,
   type BoxingCombo,
 } from "./boxing";
 import { getFormat, scaledIntervals } from "./formats";
@@ -75,28 +76,60 @@ export function generateBoxingWorkout(
     includeFootwork: settings.includeFootwork,
   });
 
+  // Basics (jab, jab-cross, …) open the workout — no overhands or complex
+  // combos. Fall back to the full pool only if somehow none qualify.
+  const basics = comboPool.filter(isBasicCombo);
+  const basicsPool = basics.length > 0 ? basics : comboPool;
+
   // Build the per-round combo sets, then flatten in round order.
-  //  - Interval formats repeat one fixed (easy→hard) set every round.
-  //  - Other formats sample the whole workout then sort easy→hard, so the
-  //    earliest rounds get the simplest combos and later rounds the longest.
+  //  - Interval formats repeat one fixed set every round; it opens with the
+  //    easiest basic and then progresses easy→hard.
+  //  - Other formats make round 1 all basics, then later rounds progress
+  //    through the full pool from simplest to longest combos.
   let roundSets: BoxingCombo[][];
   if (format.repeat) {
-    const base = sampleCombos(comboPool, perRound).sort(byProgression);
+    const opener = [...basicsPool].sort(byProgression)[0];
+    const rest = sampleCombos(
+      comboPool.filter((c) => c.id !== opener.id),
+      perRound - 1,
+    ).sort(byProgression);
+    const base = [opener, ...rest];
     roundSets = Array.from({ length: rounds }, () => base);
   } else {
-    const sample = sampleCombos(comboPool, rounds * perRound).sort(
-      byProgression,
-    );
-    roundSets = Array.from({ length: rounds }, (_, r) =>
-      sample.slice(r * perRound, (r + 1) * perRound),
-    );
+    const round1 = sampleCombos(basicsPool, perRound).sort(byProgression);
+    if (rounds === 1) {
+      roundSets = [round1];
+    } else {
+      const sample = sampleCombos(comboPool, (rounds - 1) * perRound).sort(
+        byProgression,
+      );
+      roundSets = [
+        round1,
+        ...Array.from({ length: rounds - 1 }, (_, r) =>
+          sample.slice(r * perRound, (r + 1) * perRound),
+        ),
+      ];
+    }
   }
   const picks: Exercise[] = roundSets.flat().map(comboToExercise);
-  // One recovery move per inter-combo gap: (perRound - 1) per round.
-  const recoveryPicks = pickSequence(
-    RECOVERY_MOVES,
-    Math.max(0, rounds * (perRound - 1)),
-  );
+
+  // Active-recovery moves for the inter-combo gaps ((perRound - 1) per round).
+  // For interval formats the recovery sequence repeats each round, just like
+  // the combos. With "rest" style there are no recovery moves at all.
+  const active = settings.recoveryStyle === "active";
+  const gaps = Math.max(0, perRound - 1);
+  let recoveryByRound: Exercise[][] = [];
+  if (active && gaps > 0) {
+    if (format.repeat) {
+      const baseRec = pickSequence(RECOVERY_MOVES, gaps);
+      recoveryByRound = Array.from({ length: rounds }, () => baseRec);
+    } else {
+      const flat = pickSequence(RECOVERY_MOVES, rounds * gaps);
+      recoveryByRound = Array.from({ length: rounds }, (_, r) =>
+        flat.slice(r * gaps, (r + 1) * gaps),
+      );
+    }
+  }
   const warmupPicks = pickSequence(
     stretchPool(WARMUP_MOVES, "cardio"),
     warmupCount,
@@ -115,7 +148,6 @@ export function generateBoxingWorkout(
   }
 
   let pickIdx = 0;
-  let recoveryIdx = 0;
   for (let r = 1; r <= rounds; r++) {
     for (let i = 0; i < perRound; i++) {
       const combo = picks[pickIdx++];
@@ -128,10 +160,13 @@ export function generateBoxingWorkout(
       if (isRoundEnd && roundRest > 0) {
         // Passive rest between rounds — breathe and grab water.
         steps.push({ kind: "roundRest", seconds: roundRest, round: r, label: "Round Rest" });
-      } else {
+      } else if (active) {
         // Active recovery between combos.
-        const move = recoveryPicks[recoveryIdx++];
+        const move = recoveryByRound[r - 1][i];
         steps.push({ kind: "recovery", seconds: rest, exercise: move, round: r, label: "Active Recovery" });
+      } else {
+        // Plain rest between combos.
+        steps.push({ kind: "rest", seconds: rest, round: r, label: "Rest" });
       }
     }
   }
