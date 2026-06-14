@@ -241,6 +241,12 @@ export default function WorkoutScreen({
 
   const theme = stepTheme(step);
   const upNext = nextStepLabel(steps, stepIndex);
+  // While resting/recovering the most useful thing on screen is the combo
+  // that's coming up — show it big and high-contrast so it's easy to read.
+  const resting =
+    step.kind === "rest" ||
+    step.kind === "recovery" ||
+    step.kind === "roundRest";
 
   return (
     <div
@@ -359,10 +365,22 @@ export default function WorkoutScreen({
         </div>
       </div>
 
-      {/* Up next — directly above the controls */}
-      <p className="mb-3 text-center text-sm text-ink/45">
-        Up next: <span className="font-bold text-ink/75">{upNext}</span>
-      </p>
+      {/* Up next — directly above the controls. Prominent while resting so the
+          upcoming combo is easy to read at a glance. */}
+      {resting ? (
+        <div className="mb-3 text-center">
+          <p className="text-xs font-bold uppercase tracking-[0.2em] text-ink/50">
+            Up next
+          </p>
+          <p className="mt-0.5 text-3xl font-black leading-tight text-ink">
+            {upNext}
+          </p>
+        </div>
+      ) : (
+        <p className="mb-3 text-center text-sm text-ink/45">
+          Up next: <span className="font-bold text-ink/75">{upNext}</span>
+        </p>
+      )}
 
       {/* Controls */}
       <div className="flex items-center justify-center gap-4 pb-2">
