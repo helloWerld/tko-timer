@@ -123,8 +123,8 @@ export default function WorkoutScreen({
     if (voice && boxing && s.kind === "roundRest") {
       const upcoming = steps.slice(stepIndex + 1).find((n) => n.kind === "work");
       if (upcoming?.exercise) {
-        const { name, cue } = upcoming.exercise;
-        speechTimerRef.current = setTimeout(() => speakCombo(name, cue), 700);
+        const { name } = upcoming.exercise;
+        speechTimerRef.current = setTimeout(() => speakCombo(name), 700);
       }
     }
     return () => {
