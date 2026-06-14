@@ -22,6 +22,9 @@ import type {
 const PREP_SECONDS = 10;
 const WARMUP_HOLD = 30;
 const COOLDOWN_HOLD = 30;
+// Fixed rest that bookends the main work: one after the warm-up before round 1,
+// and one after the last round before the cool-down.
+const TRANSITION_REST = 30;
 
 /** Sample `count` combos from the pool, cycling a reshuffled bag (allows
  * repeats only when the pool is smaller than count). */
@@ -63,10 +66,18 @@ export function generateBoxingWorkout(
     : 0;
   const warmupSeconds = warmupCount * WARMUP_HOLD;
   const cooldownSeconds = cooldownCount * COOLDOWN_HOLD;
+  // A transition rest is only added where it borders the main work.
+  const warmupRest = warmupCount > 0 ? TRANSITION_REST : 0;
+  const cooldownRest = cooldownCount > 0 ? TRANSITION_REST : 0;
 
   const roundCost = perRound * work + (perRound - 1) * rest + roundRest;
   const mainTarget =
-    totalTarget - PREP_SECONDS - warmupSeconds - cooldownSeconds;
+    totalTarget -
+    PREP_SECONDS -
+    warmupSeconds -
+    warmupRest -
+    cooldownRest -
+    cooldownSeconds;
   const rounds = Math.max(1, Math.round(mainTarget / roundCost));
 
   // Combo pool for the chosen level + enabled elements.
@@ -147,6 +158,11 @@ export function generateBoxingWorkout(
     steps.push({ kind: "warmup", seconds: WARMUP_HOLD, exercise: stretch, round: 0, label: "Warm-Up" });
   }
 
+  // Rest between the warm-up and the first round (announces round 1's opener).
+  if (warmupRest > 0) {
+    steps.push({ kind: "roundRest", seconds: warmupRest, round: 1, label: "Rest" });
+  }
+
   let pickIdx = 0;
   for (let r = 1; r <= rounds; r++) {
     for (let i = 0; i < perRound; i++) {
@@ -169,6 +185,11 @@ export function generateBoxingWorkout(
         steps.push({ kind: "rest", seconds: rest, round: r, label: "Rest" });
       }
     }
+  }
+
+  // Rest between the last round and the cool-down.
+  if (cooldownRest > 0) {
+    steps.push({ kind: "roundRest", seconds: cooldownRest, round: rounds, label: "Rest" });
   }
 
   for (const stretch of cooldownPicks) {

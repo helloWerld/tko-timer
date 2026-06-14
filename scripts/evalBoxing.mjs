@@ -122,6 +122,17 @@ for (const fmt of BOXING_FORMATS) {
             if (recoveryStyle === "rest" && w.steps.some((s) => s.kind === "recovery"))
               fail(`${fmt.id}: rest-only mode still produced active recovery`);
 
+            // Transition rests: a 30s rest after the warm-up before round 1,
+            // and one after the last round before the cool-down.
+            const idxFirstWork = w.steps.findIndex((s) => s.kind === "work");
+            const beforeFirst = w.steps[idxFirstWork - 1];
+            if (!beforeFirst || beforeFirst.kind !== "roundRest" || beforeFirst.seconds !== 30)
+              fail(`${fmt.id}/${difficulty}: missing 30s rest between warm-up and round 1`);
+            const idxFirstCool = w.steps.findIndex((s) => s.kind === "cooldown");
+            const beforeCool = w.steps[idxFirstCool - 1];
+            if (!beforeCool || beforeCool.kind !== "roundRest" || beforeCool.seconds !== 30)
+              fail(`${fmt.id}/${difficulty}: missing 30s rest between last round and cool-down`);
+
             // Group steps by round.
             const workByRound = new Map();
             const recByRound = new Map();

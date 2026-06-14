@@ -11,6 +11,7 @@ import {
   X,
 } from "lucide-react";
 import {
+  cancelSpeech,
   countdownCue,
   countdownToRestVoice,
   countdownToWorkVoice,
@@ -28,6 +29,7 @@ import {
   resumeVoice,
   setBeepVolume,
   setVoiceVolume,
+  speakCombo,
   stretchCue,
   testBeep,
   testVoice,
@@ -50,6 +52,7 @@ export default function WorkoutScreen({
 }) {
   const { steps, totalSeconds } = workout;
   const voice = workout.settings.soundMode === "voice";
+  const boxing = workout.settings.mode === "boxing";
 
   const [stepIndex, setStepIndex] = useState(0);
   const [remaining, setRemaining] = useState(steps[0]?.seconds ?? 0);
@@ -74,6 +77,7 @@ export default function WorkoutScreen({
   const runningRef = useRef(true);
   const advancingRef = useRef(false);
   const wakeLockRef = useRef<any>(null);
+  const speechTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // One-shot voice cues that already fired this step (robust to skipped ticks).
   const firedRef = useRef<Set<string>>(new Set());
 
@@ -112,7 +116,22 @@ export default function WorkoutScreen({
     else if (s.kind === "recovery") stretchCue();
     else if (s.kind === "warmup" || s.kind === "cooldown") stretchCue();
     else if (s.kind === "prep" && voice) getReadyVoice();
-  }, [stepIndex, steps, voice]);
+
+    // On a boxing rest round, announce the combo that's coming up — early in
+    // the rest so it finishes well before the round starts. Skip the final rest
+    // before the cool-down (no combo follows).
+    if (voice && boxing && s.kind === "roundRest") {
+      const upcoming = steps.slice(stepIndex + 1).find((n) => n.kind === "work");
+      if (upcoming?.exercise) {
+        const { name, cue } = upcoming.exercise;
+        speechTimerRef.current = setTimeout(() => speakCombo(name, cue), 700);
+      }
+    }
+    return () => {
+      if (speechTimerRef.current) clearTimeout(speechTimerRef.current);
+      cancelSpeech();
+    };
+  }, [stepIndex, steps, voice, boxing]);
 
   // Main countdown loop.
   useEffect(() => {
@@ -218,6 +237,8 @@ export default function WorkoutScreen({
     } else {
       // Pausing: stop the clock and cut off any in-progress voice cue.
       pauseVoice();
+      if (speechTimerRef.current) clearTimeout(speechTimerRef.current);
+      cancelSpeech();
     }
     setRunning(next);
   }, [remaining, stepIndex, steps]);

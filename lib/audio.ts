@@ -427,3 +427,59 @@ export function testVoice() {
   void loadVoiceBuffers();
   playVoice("halfway");
 }
+
+/* ------------------- Spoken combo announcements (TTS) ------------------- */
+
+// The combo clips are dynamic ("one, two… Jab, Cross"), so they use the browser
+// Speech Synthesis API rather than the pre-recorded files above.
+
+const NUM_WORDS = [
+  "zero", "one", "two", "three", "four", "five", "six", "seven", "eight",
+];
+const TOKEN_WORDS: Record<string, string> = {
+  SL: "slip left", SR: "slip right",
+  BL: "block left", BR: "block right",
+  DL: "duck left", DR: "duck right",
+  PL: "pivot left", PR: "pivot right",
+  STL: "step left", STR: "step right",
+};
+
+function tokenToWords(t: string): string {
+  const m = /^([1-8])(B)?$/.exec(t);
+  if (m) return NUM_WORDS[Number(m[1])] + (m[2] ? " to the body" : "");
+  return TOKEN_WORDS[t] ?? t;
+}
+
+/**
+ * Speak the upcoming combo during a rest, e.g. notation "1 - 2" + name
+ * "Jab, Cross" → "Up next. one, two. Jab, Cross." Uses the Web Speech API so
+ * arbitrary combos can be announced. No-op if speech synthesis is unavailable.
+ */
+export function speakCombo(name: string, notation: string): void {
+  if (typeof window === "undefined") return;
+  const synth = window.speechSynthesis;
+  if (!synth) return;
+  const numbers = notation
+    .split("-")
+    .map((t) => tokenToWords(t.trim()))
+    .join(", ");
+  try {
+    synth.cancel(); // drop anything still queued
+    const u = new SpeechSynthesisUtterance(`Up next. ${numbers}. ${name}.`);
+    u.volume = Math.min(1, voiceVolume);
+    u.rate = 0.95;
+    synth.speak(u);
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Stop any in-progress combo announcement (on pause / step change). */
+export function cancelSpeech(): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.speechSynthesis?.cancel();
+  } catch {
+    /* ignore */
+  }
+}

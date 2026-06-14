@@ -16,6 +16,9 @@ import type {
 const PREP_SECONDS = 10;
 const WARMUP_HOLD = 30;
 const COOLDOWN_HOLD = 30;
+// Fixed rest bordering the main work: after the warm-up before round 1, and
+// after the last round before the cool-down.
+const TRANSITION_REST = 30;
 
 export function clamp(n: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, n));
@@ -73,12 +76,21 @@ export function generateWorkout(
     : 0;
   const warmupSeconds = warmupCount * WARMUP_HOLD;
   const cooldownSeconds = cooldownCount * COOLDOWN_HOLD;
+  // A transition rest is only added where it borders the main work.
+  const warmupRest = warmupCount > 0 ? TRANSITION_REST : 0;
+  const cooldownRest = cooldownCount > 0 ? TRANSITION_REST : 0;
 
   // Time cost of one full round (work + inter-exercise rests + round rest).
   const roundCost = perRound * work + (perRound - 1) * rest + roundRest;
-  // The main block fills whatever's left after prep + warmup + cooldown.
+  // The main block fills whatever's left after prep + warmup + cooldown + the
+  // transition rests that border it.
   const mainTarget =
-    totalTarget - PREP_SECONDS - warmupSeconds - cooldownSeconds;
+    totalTarget -
+    PREP_SECONDS -
+    warmupSeconds -
+    warmupRest -
+    cooldownRest -
+    cooldownSeconds;
   const rounds = Math.max(1, Math.round(mainTarget / roundCost));
 
   // Draw work exercises from the active library; if the user has disabled every
@@ -104,6 +116,11 @@ export function generateWorkout(
     steps.push({ kind: "warmup", seconds: WARMUP_HOLD, exercise: stretch, round: 0, label: "Warm-Up" });
   }
 
+  // Rest between the warm-up and the first round.
+  if (warmupRest > 0) {
+    steps.push({ kind: "roundRest", seconds: warmupRest, round: 1, label: "Rest" });
+  }
+
   let pickIdx = 0;
   for (let r = 1; r <= rounds; r++) {
     for (let i = 0; i < perRound; i++) {
@@ -120,6 +137,11 @@ export function generateWorkout(
         steps.push({ kind: "rest", seconds: rest, round: r, label: "Rest" });
       }
     }
+  }
+
+  // Rest between the last round and the cool-down.
+  if (cooldownRest > 0) {
+    steps.push({ kind: "roundRest", seconds: cooldownRest, round: rounds, label: "Rest" });
   }
 
   // Cooldown section.
