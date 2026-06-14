@@ -365,22 +365,20 @@ export default function WorkoutScreen({
         </div>
       </div>
 
-      {/* Up next — directly above the controls. Prominent while resting so the
-          upcoming combo is easy to read at a glance. */}
-      {resting ? (
-        <div className="mb-3 text-center">
-          <p className="text-xs font-bold uppercase tracking-[0.2em] text-ink/50">
-            Up next
-          </p>
-          <p className="mt-0.5 text-3xl font-black leading-tight text-ink">
-            {upNext}
-          </p>
-        </div>
-      ) : (
-        <p className="mb-3 text-center text-sm text-ink/45">
-          Up next: <span className="font-bold text-ink/75">{upNext}</span>
+      {/* Up next — directly above the controls. Shown big and high-contrast so
+          the upcoming combo reads at a glance; a touch larger while resting. */}
+      <div className="mb-3 text-center">
+        <p className="text-xs font-bold uppercase tracking-[0.2em] text-ink/50">
+          Up next
         </p>
-      )}
+        <p
+          className={`mt-0.5 font-black leading-tight text-ink ${
+            resting ? "text-3xl" : "text-2xl"
+          }`}
+        >
+          {upNext}
+        </p>
+      </div>
 
       {/* Controls */}
       <div className="flex items-center justify-center gap-4 pb-2">
