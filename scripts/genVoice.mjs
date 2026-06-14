@@ -15,8 +15,8 @@ import { BOXING_COMBOS } from "../lib/boxing.ts";
 
 const API_KEY = process.env.ELEVENLABS_API_KEY;
 // Liam — young, energetic American male. A default voice (free-tier API can use
-// it); "Josh" is a library voice that requires a paid plan. Override with
-// ELEVENLABS_VOICE_ID (e.g. Josh's TxGEqnHWrfWFTfGW9XjX) on a paid plan.
+// it). Library/community voices (e.g. lXyLz3Gu0YqdG8RfvIyZ, Josh) require a paid
+// plan; set ELEVENLABS_VOICE_ID + FORCE=1 to use one once upgraded.
 const VOICE_ID = process.env.ELEVENLABS_VOICE_ID || "TX3LPaxmHKxFdv7VOQHJ";
 const MODEL_ID = process.env.ELEVENLABS_MODEL_ID || "eleven_multilingual_v2";
 const OUT_DIR = path.join("public", "voice");
