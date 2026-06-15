@@ -14,10 +14,10 @@ import { execFileSync } from "node:child_process";
 import { BOXING_COMBOS } from "../lib/boxing.ts";
 
 const API_KEY = process.env.ELEVENLABS_API_KEY;
-// Liam — young, energetic American male. A default voice (free-tier API can use
-// it). Library/community voices (e.g. lXyLz3Gu0YqdG8RfvIyZ, Josh) require a paid
+// Adam — deep American male. A default voice (free-tier API can use it).
+// Library/community voices (e.g. lXyLz3Gu0YqdG8RfvIyZ, Josh) require a paid
 // plan; set ELEVENLABS_VOICE_ID + FORCE=1 to use one once upgraded.
-const VOICE_ID = process.env.ELEVENLABS_VOICE_ID || "TX3LPaxmHKxFdv7VOQHJ";
+const VOICE_ID = process.env.ELEVENLABS_VOICE_ID || "pNInz6obpgDQGcFmaJgB";
 const MODEL_ID = process.env.ELEVENLABS_MODEL_ID || "eleven_multilingual_v2";
 const OUT_DIR = path.join("public", "voice");
 
@@ -39,16 +39,16 @@ for (const c of BOXING_COMBOS) {
 // to sit over the per-second beeps (tune by ear after first generation).
 const CUES = {
   getready: "Get ready!",
-  "prep-go": "Three... two... one... Go!",
+  "prep-go": "Three, two, one. Go!",
   halfway: "Halfway there! Keep going!",
-  "to-work": "Five... four... three... two... one... Next round!",
-  "to-rest": "Five... four... three... two... one... Rest.",
-  "rest-end": "Three... two... one... Next round!",
+  "to-work": "Five, four, three, two, one. Next round!",
+  "to-rest": "Five, four, three, two, one. Rest.",
+  "rest-end": "Three, two, one. Next round!",
 };
 
 const items = [
-  ...[...phrases].map((text) => ({ file: slug(text), text })),
-  ...Object.entries(CUES).map(([file, text]) => ({ file, text })),
+  ...[...phrases].map((text) => ({ file: slug(text), text, cue: false })),
+  ...Object.entries(CUES).map(([file, text]) => ({ file, text, cue: true })),
 ];
 
 // Countdown cues fire a fixed number of seconds before a step ends, so they're
@@ -60,14 +60,16 @@ const FIT_SECONDS = {
   "rest-end": 2.9, // fires with ~3s left
 };
 
+function probe(f) {
+  return Number(
+    execFileSync("ffprobe", [
+      "-v", "error", "-show_entries", "format=duration",
+      "-of", "default=nw=1:nk=1", f,
+    ]).toString().trim(),
+  );
+}
+
 function fitDuration(file, target) {
-  const probe = (f) =>
-    Number(
-      execFileSync("ffprobe", [
-        "-v", "error", "-show_entries", "format=duration",
-        "-of", "default=nw=1:nk=1", f,
-      ]).toString().trim(),
-    );
   const dur = probe(file);
   if (dur <= target + 0.05) return dur; // already short enough
   const tempo = Math.max(0.5, Math.min(2.0, dur / target));
@@ -80,7 +82,23 @@ function fitDuration(file, target) {
   return probe(file);
 }
 
-async function tts(text) {
+// Short word clips need steadier settings — very low stability / high style
+// makes the model ramble or add breaths on one- or two-word inputs. The cue
+// sentences can carry a little more energy.
+const SETTINGS_PHRASE = {
+  stability: 0.7,
+  similarity_boost: 0.75,
+  style: 0.1,
+  use_speaker_boost: true,
+};
+const SETTINGS_CUE = {
+  stability: 0.45,
+  similarity_boost: 0.8,
+  style: 0.35,
+  use_speaker_boost: true,
+};
+
+async function tts(text, voiceSettings) {
   const res = await fetch(
     `https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}`,
     {
@@ -93,13 +111,7 @@ async function tts(text) {
       body: JSON.stringify({
         text,
         model_id: MODEL_ID,
-        // Lower stability + higher style = more lively/energetic delivery.
-        voice_settings: {
-          stability: 0.35,
-          similarity_boost: 0.8,
-          style: 0.6,
-          use_speaker_boost: true,
-        },
+        voice_settings: voiceSettings,
       }),
     },
   );
@@ -120,15 +132,36 @@ for (const it of items) {
     continue;
   }
   try {
-    const buf = await tts(it.text);
-    fs.writeFileSync(out, buf);
     let note = "";
-    if (FIT_SECONDS[it.file]) {
-      const fitted = fitDuration(out, FIT_SECONDS[it.file]);
-      note = ` → fit ${fitted.toFixed(1)}s`;
+    if (it.cue) {
+      const buf = await tts(it.text, SETTINGS_CUE);
+      fs.writeFileSync(out, buf);
+      if (FIT_SECONDS[it.file]) {
+        note = ` → fit ${fitDuration(out, FIT_SECONDS[it.file]).toFixed(1)}s`;
+      }
+    } else {
+      // Word clips can occasionally ramble (the model adds breaths/filler on
+      // short text). Retry and keep the shortest that's within budget.
+      const words = it.text.trim().split(/\s+/).length;
+      const maxDur = words * 0.85 + 0.9;
+      let bestDur = Infinity;
+      for (let attempt = 1; attempt <= 6; attempt++) {
+        const tmp = `${out}.try${attempt}.mp3`;
+        fs.writeFileSync(tmp, await tts(it.text, SETTINGS_PHRASE));
+        const dur = probe(tmp);
+        if (dur < bestDur) {
+          bestDur = dur;
+          fs.renameSync(tmp, out);
+        } else {
+          fs.rmSync(tmp);
+        }
+        if (bestDur <= maxDur) break;
+        if (attempt < 4) note = ` (retry, ${dur.toFixed(1)}s>${maxDur.toFixed(1)}s)`;
+      }
+      note = ` ${bestDur.toFixed(1)}s` + (bestDur > maxDur ? ` (over ${maxDur.toFixed(1)}s)` : "");
     }
     made++;
-    console.log(`  ✓ ${it.file}.mp3  "${it.text}"  (${(buf.length / 1024).toFixed(0)} KB)${note}`);
+    console.log(`  ✓ ${it.file}.mp3  "${it.text}"${note}`);
   } catch (e) {
     console.error(`  ✗ ${it.file}.mp3 — ${e.message}`);
     process.exitCode = 1;
