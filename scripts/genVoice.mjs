@@ -156,9 +156,22 @@ for (const it of items) {
           fs.rmSync(tmp);
         }
         if (bestDur <= maxDur) break;
-        if (attempt < 4) note = ` (retry, ${dur.toFixed(1)}s>${maxDur.toFixed(1)}s)`;
+        if (attempt < 6) note = ` (retry, ${dur.toFixed(1)}s>${maxDur.toFixed(1)}s)`;
       }
-      note = ` ${bestDur.toFixed(1)}s` + (bestDur > maxDur ? ` (over ${maxDur.toFixed(1)}s)` : "");
+      // Some words (e.g. "Lead Uppercut") reliably ramble with this voice; if
+      // every retry overshoots, hard-trim the trailing filler to the budget so
+      // the announcement never drags.
+      if (bestDur > maxDur) {
+        execFileSync("ffmpeg", [
+          "-v", "error", "-y", "-i", out, "-t", String(maxDur),
+          "-af", "afade=t=out:st=" + (maxDur - 0.12).toFixed(2) + ":d=0.12",
+          "-b:a", "128k", `${out}.trim.mp3`,
+        ]);
+        fs.renameSync(`${out}.trim.mp3`, out);
+        note = ` ${probe(out).toFixed(1)}s (trimmed from ${bestDur.toFixed(1)}s)`;
+      } else {
+        note = ` ${bestDur.toFixed(1)}s`;
+      }
     }
     made++;
     console.log(`  ✓ ${it.file}.mp3  "${it.text}"${note}`);
