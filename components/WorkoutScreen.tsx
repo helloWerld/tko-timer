@@ -116,10 +116,16 @@ export default function WorkoutScreen({
     else if (s.kind === "warmup" || s.kind === "cooldown") stretchCue();
     else if (s.kind === "prep" && voice) getReadyVoice();
 
-    // Announce the upcoming combo (notation numbers + names) early, so it lands
-    // well before the countdown: "Up next, one three, Jab, Lead Hook" on a rest
-    // round, and "Up first, ..." for the very first combo during Get Ready.
-    if (voice && boxing && (s.kind === "roundRest" || s.kind === "prep")) {
+    // Announce the upcoming combo (notation numbers + names) early in any break
+    // before a combo — round rests, active recovery, and plain rests between
+    // combos — so it lands well before the countdown: "Up next, one three, Jab,
+    // Lead Hook". The Get Ready prep announces the first combo as "Up first, …".
+    const announceKinds =
+      s.kind === "roundRest" ||
+      s.kind === "recovery" ||
+      s.kind === "rest" ||
+      s.kind === "prep";
+    if (voice && boxing && announceKinds) {
       const first = s.kind === "prep";
       const target = first
         ? steps.find((n) => n.kind === "work")
