@@ -116,14 +116,22 @@ export default function WorkoutScreen({
     else if (s.kind === "warmup" || s.kind === "cooldown") stretchCue();
     else if (s.kind === "prep" && voice) getReadyVoice();
 
-    // On a boxing rest round, announce the combo that's coming up — early in
-    // the rest so it finishes well before the round starts. Skip the final rest
-    // before the cool-down (no combo follows).
-    if (voice && boxing && s.kind === "roundRest") {
-      const upcoming = steps.slice(stepIndex + 1).find((n) => n.kind === "work");
-      if (upcoming?.exercise) {
-        const { name } = upcoming.exercise;
-        speechTimerRef.current = setTimeout(() => speakCombo(name), 700);
+    // Announce the upcoming combo (notation numbers + names) early, so it lands
+    // well before the countdown: "Up next, one three, Jab, Lead Hook" on a rest
+    // round, and "Up first, ..." for the very first combo during Get Ready.
+    if (voice && boxing && (s.kind === "roundRest" || s.kind === "prep")) {
+      const first = s.kind === "prep";
+      const target = first
+        ? steps.find((n) => n.kind === "work")
+        : steps.slice(stepIndex + 1).find((n) => n.kind === "work");
+      const ex = target?.exercise;
+      if (ex) {
+        // On prep let "Get ready!" play first; on a rest start almost at once.
+        const delay = first ? 1100 : 700;
+        speechTimerRef.current = setTimeout(
+          () => speakCombo(ex.name, ex.cue, { first }),
+          delay,
+        );
       }
     }
     return () => {

@@ -34,8 +34,9 @@ const slug = (s) =>
 //   - the counted numbers + transition words, played one-per-second on the beat
 //     so the countdown stays locked to the beeps (the app sequences them).
 const phrases = new Set([
-  "Up next",
-  "One", "Two", "Three", "Four", "Five",
+  "Up next", "Up first",
+  // Numbers 1–8 cover both the countdown (1–5) and the spoken combo notation.
+  "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight",
   "Go", "Rest", "Next round",
 ]);
 for (const c of BOXING_COMBOS) {

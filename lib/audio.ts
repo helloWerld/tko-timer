@@ -421,14 +421,19 @@ function phraseSlug(s: string): string {
 
 // Every phrase clip we may need: "up next" plus each distinct combo-name
 // segment. Derived from the combo list so it can never drift from generation.
-// Beat-locked countdown clips: spoken one-per-second on each beep.
-const COUNT_SLUGS = ["one", "two", "three", "four", "five"] as const;
+// Spoken number words. 1–5 are used by the per-second countdown; 1–8 are used
+// to read out a combo's notation ("one, three…").
+const NUMBER_SLUGS = [
+  "one", "two", "three", "four", "five", "six", "seven", "eight",
+] as const;
 // Spoken at a step transition, after the count.
 const TAIL_SLUGS = ["go", "rest", "next-round"] as const;
 export type TransitionWord = (typeof TAIL_SLUGS)[number];
 
 const PHRASE_SLUGS: string[] = (() => {
-  const set = new Set<string>(["up-next", ...COUNT_SLUGS, ...TAIL_SLUGS]);
+  const set = new Set<string>([
+    "up-next", "up-first", ...NUMBER_SLUGS, ...TAIL_SLUGS,
+  ]);
   for (const c of BOXING_COMBOS) {
     c.name.split(",").forEach((seg) => set.add(phraseSlug(seg.trim())));
   }
@@ -460,9 +465,31 @@ async function loadPhraseBuffers(): Promise<void> {
 const comboSources = new Set<AudioBufferSourceNode>();
 let comboEl: HTMLAudioElement | null = null;
 
-/** Announce the upcoming combo by name, e.g. "Up next. Jab, Cross, Lead Hook." */
-export function speakCombo(name: string): void {
-  const keys = ["up-next", ...name.split(",").map((s) => phraseSlug(s.trim()))];
+/** Spoken number words for a combo's notation punches (1–8, body suffix dropped). */
+function notationNumbers(notation: string): string[] {
+  return notation
+    .split("-")
+    .map((t) => t.trim())
+    .map((t) => /^([1-8])B?$/.exec(t)?.[1])
+    .filter((d): d is string => Boolean(d))
+    .map((d) => NUMBER_SLUGS[Number(d) - 1]);
+}
+
+/**
+ * Announce a combo as its notation numbers then its names, e.g. notation
+ * "1 - 3" + name "Jab, Lead Hook" → "Up next. one, three. Jab, Lead Hook."
+ * Pass {first: true} for the "Up first" prep announcement.
+ */
+export function speakCombo(
+  name: string,
+  notation: string,
+  opts?: { first?: boolean },
+): void {
+  const keys = [
+    opts?.first ? "up-first" : "up-next",
+    ...notationNumbers(notation),
+    ...name.split(",").map((s) => phraseSlug(s.trim())),
+  ];
   cancelSpeech();
   const c = graph();
   const buffers = keys.map((k) => phraseBuffers[k]);
@@ -503,7 +530,7 @@ function playClip(slug: string): void {
 
 /** Speak a countdown number (1–5) on its beat — aligned with the beep. */
 export function speakCount(n: number): void {
-  const slug = COUNT_SLUGS[n - 1];
+  const slug = NUMBER_SLUGS[n - 1];
   if (slug) playClip(slug);
 }
 
