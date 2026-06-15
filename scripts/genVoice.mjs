@@ -29,21 +29,23 @@ if (!API_KEY) {
 const slug = (s) =>
   s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 
-// Vocabulary: "Up next" + every distinct comma-separated combo-name segment.
-const phrases = new Set(["Up next"]);
+// Word vocabulary, generated as individual short clips:
+//   - "Up next" + every distinct combo-name segment (for combo announcements)
+//   - the counted numbers + transition words, played one-per-second on the beat
+//     so the countdown stays locked to the beeps (the app sequences them).
+const phrases = new Set([
+  "Up next",
+  "One", "Two", "Three", "Four", "Five",
+  "Go", "Rest", "Next round",
+]);
 for (const c of BOXING_COMBOS) {
   c.name.split(",").forEach((seg) => phrases.add(seg.trim()));
 }
 
-// Fixed timer cues. Ellipses pace the countdowns roughly one number per second
-// to sit over the per-second beeps (tune by ear after first generation).
+// Fixed spoken cues (whole phrases, not beat-locked).
 const CUES = {
   getready: "Get ready!",
-  "prep-go": "Three, two, one. Go!",
   halfway: "Halfway there! Keep going!",
-  "to-work": "Five, four, three, two, one. Next round!",
-  "to-rest": "Five, four, three, two, one. Rest.",
-  "rest-end": "Three, two, one. Next round!",
 };
 
 const items = [
@@ -51,14 +53,9 @@ const items = [
   ...Object.entries(CUES).map(([file, text]) => ({ file, text, cue: true })),
 ];
 
-// Countdown cues fire a fixed number of seconds before a step ends, so they're
-// time-compressed (pitch-preserved) to land on the transition. The per-second
-// beeps already carry the precise timing; this just keeps the voice aligned.
-const FIT_SECONDS = {
-  "to-work": 4.8, // fires with ~5s left
-  "to-rest": 4.8,
-  "rest-end": 2.9, // fires with ~3s left
-};
+// No whole-sentence countdown clips anymore (numbers are beat-locked), so
+// nothing needs time-fitting.
+const FIT_SECONDS = {};
 
 function probe(f) {
   return Number(

@@ -195,20 +195,14 @@ export function testBeep() {
 
 /* ------------------------------- Voice -------------------------------- */
 
-// Human-recorded voice clips.
+// Whole-phrase spoken cues (not beat-locked).
 //  getReady  — start of the Get Ready screen (prep)
-//  prepGo    — last 3 seconds of the Get Ready screen ("3, 2, 1, go")
 //  halfway   — midpoint of a work round
-//  toWork    — work round ending straight into another work round (5s)
-//  toRest    — work round ending into a rest period (5s)
-//  restEnd   — rest period ending into the next work round (3s)
+// Countdown numbers and transition words are separate per-beat clips played by
+// speakCount() / speakTransition() so they stay locked to the per-second beeps.
 const VOICE_FILES = {
   getReady: "/voice/getready.mp3",
-  prepGo: "/voice/prep-go.mp3",
   halfway: "/voice/halfway.mp3",
-  toWork: "/voice/to-work.mp3",
-  toRest: "/voice/to-rest.mp3",
-  restEnd: "/voice/rest-end.mp3",
 } as const;
 
 type VoiceKey = keyof typeof VOICE_FILES;
@@ -400,29 +394,9 @@ export function getReadyVoice() {
   playVoice("getReady");
 }
 
-/** "3, 2, 1, go" — played in the last 3 seconds of the Get Ready screen. */
-export function prepGoVoice() {
-  playVoice("prepGo");
-}
-
 /** "Halfway there" — played at the midpoint of a work set. */
 export function halfwayVoice() {
   playVoice("halfway");
-}
-
-/** Work-set 5s countdown when the next round is more work (no rest). */
-export function countdownToWorkVoice() {
-  playVoice("toWork");
-}
-
-/** Work-set 5s countdown when a rest period comes next. */
-export function countdownToRestVoice() {
-  playVoice("toRest");
-}
-
-/** Rest-period 3s countdown into the next work round. */
-export function restEndVoice() {
-  playVoice("restEnd");
 }
 
 /** Play a spoken clip immediately (for testing / the volume slider). */
@@ -447,8 +421,14 @@ function phraseSlug(s: string): string {
 
 // Every phrase clip we may need: "up next" plus each distinct combo-name
 // segment. Derived from the combo list so it can never drift from generation.
+// Beat-locked countdown clips: spoken one-per-second on each beep.
+const COUNT_SLUGS = ["one", "two", "three", "four", "five"] as const;
+// Spoken at a step transition, after the count.
+const TAIL_SLUGS = ["go", "rest", "next-round"] as const;
+export type TransitionWord = (typeof TAIL_SLUGS)[number];
+
 const PHRASE_SLUGS: string[] = (() => {
-  const set = new Set<string>(["up-next"]);
+  const set = new Set<string>(["up-next", ...COUNT_SLUGS, ...TAIL_SLUGS]);
   for (const c of BOXING_COMBOS) {
     c.name.split(",").forEach((seg) => set.add(phraseSlug(seg.trim())));
   }
@@ -502,6 +482,34 @@ export function speakCombo(name: string): void {
   }
   // Fallback: chain <audio> elements (buffers not decoded yet / decode failed).
   playPhraseEls(keys.map(phraseFile));
+}
+
+/** Play a single decoded clip one-shot through the voice channel. */
+function playClip(slug: string): void {
+  const c = graph();
+  const buf = phraseBuffers[slug];
+  if (c && voiceGain && buf) {
+    const src = c.createBufferSource();
+    src.buffer = buf;
+    src.connect(voiceGain);
+    src.start();
+    return;
+  }
+  if (typeof window === "undefined") return;
+  const el = new Audio(phraseFile(slug));
+  el.volume = Math.min(1, voiceVolume);
+  el.play().catch(() => {});
+}
+
+/** Speak a countdown number (1–5) on its beat — aligned with the beep. */
+export function speakCount(n: number): void {
+  const slug = COUNT_SLUGS[n - 1];
+  if (slug) playClip(slug);
+}
+
+/** Speak the transition word at the end of a countdown ("go"/"rest"/"next-round"). */
+export function speakTransition(word: TransitionWord): void {
+  playClip(word);
 }
 
 function playPhraseEls(files: string[]): void {

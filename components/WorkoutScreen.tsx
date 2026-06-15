@@ -13,8 +13,6 @@ import {
 import {
   cancelSpeech,
   countdownCue,
-  countdownToRestVoice,
-  countdownToWorkVoice,
   finishCue,
   getReadyVoice,
   getVolumes,
@@ -23,17 +21,18 @@ import {
   halfwayVoice,
   longGoBeep,
   pauseVoice,
-  prepGoVoice,
   restCue,
-  restEndVoice,
   resumeVoice,
   setBeepVolume,
   setVoiceVolume,
   speakCombo,
+  speakCount,
+  speakTransition,
   stretchCue,
   testBeep,
   testVoice,
   unlockAudio,
+  type TransitionWord,
 } from "@/lib/audio";
 import { formatClock } from "@/lib/time";
 import type { GeneratedWorkout, IntervalStep } from "@/lib/types";
@@ -144,6 +143,12 @@ export default function WorkoutScreen({
 
       if (rem <= 0) {
         setRemaining(0);
+        // Speak the transition word right on the beat ("go" / "next round" /
+        // "rest"), after the last counted number.
+        if (voice) {
+          const t = tailFor(s.kind, steps[stepIndex + 1]?.kind);
+          if (t) speakTransition(t);
+        }
         advance();
         return;
       }
@@ -154,12 +159,7 @@ export default function WorkoutScreen({
         prevCeilRef.current = ceil;
         const half = Math.round(s.seconds / 2);
 
-        const nextKind = steps[stepIndex + 1]?.kind;
-
         if (voice) {
-          // Voice one-shots fire once when the countdown CROSSES the threshold
-          // (robust if a tick skips the exact second), plus the per-second
-          // countdown beeps (5s on work / warm-up / cool-down, 3s on rest / prep).
           const fired = firedRef.current;
           const fireOnce = (k: string, fn: () => void) => {
             if (!fired.has(k)) {
@@ -167,27 +167,18 @@ export default function WorkoutScreen({
               fn();
             }
           };
-          if (s.kind === "work") {
-            if (half > 5 && ceil <= half) fireOnce("half", halfwayVoice);
-            if (s.seconds >= 6 && ceil <= 5) {
-              fireOnce("count", nextKind === "work" ? countdownToWorkVoice : countdownToRestVoice);
-            }
-            if (ceil <= 5 && ceil >= 1) countdownCue();
-          } else if (s.kind === "warmup" || s.kind === "cooldown") {
-            // Same as work: "halfway there" + the 5s countdown clip.
-            if (half > 5 && ceil <= half) fireOnce("half", halfwayVoice);
-            if (s.seconds >= 6 && ceil <= 5) fireOnce("count", countdownToWorkVoice);
-            if (ceil <= 5 && ceil >= 1) countdownCue();
-          } else if (
-            s.kind === "rest" ||
-            s.kind === "roundRest" ||
-            s.kind === "recovery"
-          ) {
-            if (s.seconds >= 4 && ceil <= 3) fireOnce("count", restEndVoice);
-            if (ceil <= 3 && ceil >= 1) countdownCue();
-          } else if (s.kind === "prep") {
-            if (s.seconds >= 4 && ceil <= 3) fireOnce("count", prepGoVoice);
-            if (ceil <= 3 && ceil >= 1) countdownCue();
+          const isWorkish =
+            s.kind === "work" || s.kind === "warmup" || s.kind === "cooldown";
+          // "Halfway there" at the midpoint of work / warm-up / cool-down.
+          if (isWorkish && half > 5 && ceil <= half) {
+            fireOnce("half", halfwayVoice);
+          }
+          // Per-second number spoken ON the beat, alongside the beep — work /
+          // warm-up / cool-down count from 5; rest / recovery / prep from 3.
+          const window = isWorkish ? 5 : 3;
+          if (ceil <= window && ceil >= 1) {
+            countdownCue();
+            speakCount(ceil);
           }
         } else {
           // Beep mode (unchanged): 5s countdown ticks everywhere, halfway beep
@@ -525,6 +516,17 @@ function CircleButton({
       {children}
     </button>
   );
+}
+
+// The word spoken right at a step transition, after the counted numbers.
+function tailFor(
+  cur: IntervalStep["kind"],
+  next: IntervalStep["kind"] | undefined,
+): TransitionWord | null {
+  if (cur === "prep") return "go";
+  if (!next || next === "cooldown" || next === "warmup") return null;
+  if (next === "work") return "next-round";
+  return "rest"; // next is rest / roundRest / recovery
 }
 
 // Per-step tint + foreground. Colors come from CSS variables (--<kind>-bg/-fg)
