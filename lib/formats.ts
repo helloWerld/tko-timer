@@ -61,53 +61,31 @@ export const FORMATS: WorkoutFormat[] = [
  * baseWork = seconds per combo, exercisesPerRound = combos per round,
  * baseRest = active-recovery length between combos, baseRoundRest = passive
  * rest between rounds (breathe / water).
+ *
+ * The two formats differ only in `repeat`: "Mixed bag" draws fresh combos every
+ * round, "Intervals" repeats one fixed set. Their work/rest timing is identical
+ * — the user shapes that through Intensity (low/medium/high or custom sliders).
  */
+const BOXING_BASE = {
+  baseWork: 40,
+  baseRest: 20,
+  exercisesPerRound: 5,
+  baseRoundRest: 30,
+} as const;
+
 export const BOXING_FORMATS: WorkoutFormat[] = [
   {
-    id: "box-rounds",
-    name: "Boxing Rounds",
-    blurb: "60s combos, 30s active recovery, 30s rest between rounds.",
-    baseWork: 60,
-    baseRest: 30,
-    exercisesPerRound: 5,
-    baseRoundRest: 30,
+    id: "box-mixed",
+    name: "Mixed bag",
+    blurb: "Fresh combinations every round.",
+    ...BOXING_BASE,
   },
   {
     id: "box-intervals",
     name: "Intervals",
-    blurb: "One fixed combo set repeated every round.",
-    baseWork: 30,
-    baseRest: 15,
-    exercisesPerRound: 6,
-    baseRoundRest: 45,
+    blurb: "The same combo set repeats every round.",
+    ...BOXING_BASE,
     repeat: true,
-  },
-  {
-    id: "box-speed",
-    name: "Speed Bursts",
-    blurb: "Sharp 20s combos, quick 10s recoveries.",
-    baseWork: 20,
-    baseRest: 10,
-    exercisesPerRound: 6,
-    baseRoundRest: 45,
-  },
-  {
-    id: "box-technical",
-    name: "Technical",
-    blurb: "Longer 45s combos to drill clean technique.",
-    baseWork: 45,
-    baseRest: 20,
-    exercisesPerRound: 4,
-    baseRoundRest: 60,
-  },
-  {
-    id: "box-conditioning",
-    name: "Conditioning",
-    blurb: "Continuous 40s work, short active recovery.",
-    baseWork: 40,
-    baseRest: 15,
-    exercisesPerRound: 6,
-    baseRoundRest: 50,
   },
 ];
 
@@ -120,20 +98,31 @@ export function getFormat(id: string): WorkoutFormat {
 }
 
 /**
- * Intensity scales interval length: higher intensity = longer work, shorter
- * rest (so each second is harder). Returns rounded work/rest in seconds.
+ * Resolve the work/rest/round-rest seconds for a format. low/medium/high scale
+ * the format's base timing (higher intensity = longer work, shorter rest, so
+ * each second is harder). "custom" ignores the scaling and uses the caller's
+ * `custom` work/rest values verbatim (round rest stays the format default).
  */
 export function scaledIntervals(
   format: WorkoutFormat,
   intensity: Intensity,
+  custom?: { work: number; rest: number },
 ): { work: number; rest: number; roundRest: number } {
+  const round5 = (n: number) => Math.max(5, Math.round(n / 5) * 5);
+  if (intensity === "custom" && custom) {
+    return {
+      work: round5(custom.work),
+      rest: custom.rest > 0 ? round5(custom.rest) : 0,
+      roundRest: format.baseRoundRest > 0 ? round5(format.baseRoundRest) : 0,
+    };
+  }
   const factor: Record<Intensity, { work: number; rest: number }> = {
     low: { work: 0.85, rest: 1.3 },
     medium: { work: 1.0, rest: 1.0 },
     high: { work: 1.2, rest: 0.7 },
+    custom: { work: 1.0, rest: 1.0 },
   };
   const f = factor[intensity];
-  const round5 = (n: number) => Math.max(5, Math.round(n / 5) * 5);
   return {
     work: round5(format.baseWork * f.work),
     rest: round5(format.baseRest * f.rest),

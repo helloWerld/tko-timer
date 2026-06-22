@@ -465,42 +465,18 @@ async function loadPhraseBuffers(): Promise<void> {
 const comboSources = new Set<AudioBufferSourceNode>();
 let comboEl: HTMLAudioElement | null = null;
 
-// Defensive / footwork notation tokens → their clip slugs (the same clips used
-// as combo name segments).
-const NOTATION_TOKEN_SLUG: Record<string, string> = {
-  SL: "slip-left", SR: "slip-right",
-  BL: "block-left", BR: "block-right",
-  DL: "duck-left", DR: "duck-right",
-  PL: "pivot-left", PR: "pivot-right",
-  STL: "step-left", STR: "step-right",
-};
-
-/** Spoken words for a combo's full notation — punches (1–8, body suffix dropped)
- *  and defensive/footwork moves, e.g. "1 - SL - 2" → one, slip-left, two. */
-function notationWords(notation: string): string[] {
-  return notation
-    .split("-")
-    .map((t) => t.trim())
-    .map((t) => {
-      const punch = /^([1-8])B?$/.exec(t)?.[1];
-      return punch ? NUMBER_SLUGS[Number(punch) - 1] : NOTATION_TOKEN_SLUG[t];
-    })
-    .filter((slug): slug is string => Boolean(slug));
-}
-
 /**
- * Announce a combo as its full notation then its names, e.g. notation
- * "1 - 3" + name "Jab, Lead Hook" → "Up next. one, three. Jab, Lead Hook."
- * Pass {first: true} for the "Up first" prep announcement.
+ * Announce a combo by its move names only, e.g. name "Jab, Lead Hook" →
+ * "Up next. Jab, Lead Hook." Pass {first: true} for the "Up first" prep
+ * announcement. The `notation` arg is accepted but no longer spoken.
  */
 export function speakCombo(
   name: string,
-  notation: string,
+  _notation: string,
   opts?: { first?: boolean },
 ): void {
   const keys = [
     opts?.first ? "up-first" : "up-next",
-    ...notationWords(notation),
     ...name.split(",").map((s) => phraseSlug(s.trim())),
   ];
   cancelSpeech();

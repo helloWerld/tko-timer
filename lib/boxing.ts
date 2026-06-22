@@ -17,6 +17,9 @@ export interface BoxingCombo {
   notation: string;
   /** Number of strikes (numeric tokens, incl. body variants like 1B). */
   punches: number;
+  /** Highest punch number used (1–8); 0 if the combo has no strikes. Drives
+   * the progression: 1–2 straights, 3–4 hooks, 5–6 uppercuts, 7–8 overhands. */
+  maxPunch: number;
   /** Total moves: every token, i.e. punches + slips/blocks/ducks/footwork. */
   moves: number;
   hasSlipBlock: boolean;
@@ -60,11 +63,17 @@ function parseCombo(name: string, notation: string): BoxingCombo {
   const tokens = notation.split("-").map((t) => t.trim());
   const punches = tokens.filter((t) => PUNCH.test(t)).length;
   const moves = tokens.length;
+  const punchNums = tokens
+    .map((t) => /^([1-8])B?$/.exec(t)?.[1])
+    .filter((n): n is string => Boolean(n))
+    .map(Number);
+  const maxPunch = punchNums.length ? Math.max(...punchNums) : 0;
   return {
     id: `box-${slug(name)}`,
     name,
     notation,
     punches,
+    maxPunch,
     moves,
     hasSlipBlock: tokens.some((t) => SLIP_BLOCK.has(t)),
     hasDuck: tokens.some((t) => DUCK.has(t)),
@@ -72,6 +81,25 @@ function parseCombo(name: string, notation: string): BoxingCombo {
     hasOverhand: tokens.some((t) => OVERHAND.has(t)),
     difficulty: difficultyFor(moves),
   };
+}
+
+/**
+ * Progression weight, lowest = simplest. Combos escalate through layers, and
+ * the layer dominates the ordering:
+ *   tier 0 — straight punches only (1–2)
+ *   tier 1 — introduces hooks (3–4)
+ *   tier 2 — introduces uppercuts (5–6)
+ *   tier 3 — the advanced layer: overhands (7–8) or any slip/block/duck/footwork
+ * Within a tier, longer combos (more moves, then more punches) come later, so a
+ * sorted sequence reads jab → jab-cross → … → uppercut combos → ducks/overhands.
+ */
+export function comboComplexity(c: BoxingCombo): number {
+  let tier: number;
+  if (c.hasOverhand || c.hasSlipBlock || c.hasDuck || c.hasFootwork) tier = 3;
+  else if (c.maxPunch >= 5) tier = 2;
+  else if (c.maxPunch >= 3) tier = 1;
+  else tier = 0;
+  return tier * 1000 + c.moves * 100 + c.punches * 10;
 }
 
 /**
@@ -132,7 +160,7 @@ Jab, Cross, Lead Hook, Cross, Step Right (1 - 2 - 3 - 2 - STR)
 Jab, Cross, Lead Hook, Rear Hook, Pivot Right (1 - 2 - 3 - 4 - PR)
 Jab, Lead Hook (1 - 3)
 Jab, Lead Hook, Cross (1 - 3 - 2)
-Jab, Lead Hook Head, Lead Hook Body (1 - 3 - 3B)
+Jab, Lead Hook, Lead Hook Body (1 - 3 - 3B)
 Jab, Lead Hook, Cross, Slip Right (1 - 3 - 2 - SR)
 Jab, Lead Hook, Cross, Lead Hook (1 - 3 - 2 - 3)
 Jab, Lead Hook, Rear Hook (1 - 3 - 4)
@@ -173,7 +201,7 @@ Cross, Rear Hook (2 - 4)
 Cross, Lead Uppercut (2 - 5)
 Cross, Rear Uppercut (2 - 6)
 Cross, Lead Overhand (2 - 7)
-Cross Head, Cross Body (2 - 2B)
+Cross, Cross Body (2 - 2B)
 Cross, Slip Left (2 - SL)
 Cross, Slip Right (2 - SR)
 Cross, Duck Left (2 - DL)
@@ -213,7 +241,7 @@ Lead Hook (3)
 Lead Hook, Cross (3 - 2)
 Lead Hook, Rear Hook (3 - 4)
 Lead Hook, Rear Uppercut (3 - 6)
-Lead Hook Head, Lead Hook Body (3 - 3B)
+Lead Hook, Lead Hook Body (3 - 3B)
 Lead Hook, Slip Left (3 - SL)
 Lead Hook, Slip Right (3 - SR)
 Lead Hook, Pivot Left (3 - PL)
@@ -252,7 +280,7 @@ Rear Hook, Slip Left (4 - SL)
 Rear Hook, Slip Right (4 - SR)
 Rear Hook, Pivot Right (4 - PR)
 Rear Hook, Step Right (4 - STR)
-Rear Hook Body, Rear Hook Head (4B - 4)
+Rear Hook Body, Rear Hook (4B - 4)
 Rear Hook Body, Jab (4B - 1)
 Rear Hook, Jab, Cross (4 - 1 - 2)
 Rear Hook, Lead Hook, Cross (4 - 3 - 2)

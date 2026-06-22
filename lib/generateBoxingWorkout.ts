@@ -6,8 +6,8 @@ import {
 import {
   RECOVERY_MOVES,
   boxingComboPool,
+  comboComplexity,
   comboToExercise,
-  isBasicCombo,
   type BoxingCombo,
 } from "./boxing";
 import { getFormat, scaledIntervals } from "./formats";
@@ -26,23 +26,23 @@ const COOLDOWN_HOLD = 30;
 // and one after the last round before the cool-down.
 const TRANSITION_REST = 30;
 
-/** Sample `count` combos from the pool, cycling a reshuffled bag (allows
- * repeats only when the pool is smaller than count). */
-function sampleCombos(pool: BoxingCombo[], count: number): BoxingCombo[] {
+/**
+ * Pick `count` combos that ramp from simplest to most complex. The pool is
+ * sorted by complexity and split into `count` contiguous buckets; one random
+ * combo is drawn from each, so the result spans the full range — easiest first,
+ * hardest last — while still varying run to run. When the pool is smaller than
+ * `count`, adjacent buckets collapse onto the same combo (i.e. it repeats).
+ */
+function rampedSelection(pool: BoxingCombo[], count: number): BoxingCombo[] {
   const out: BoxingCombo[] = [];
-  if (pool.length === 0) return out;
-  let bag: BoxingCombo[] = [];
-  while (out.length < count) {
-    if (bag.length === 0) bag = shuffle(pool);
-    out.push(bag.shift()!);
+  if (pool.length === 0 || count <= 0) return out;
+  const sorted = [...pool].sort((a, b) => comboComplexity(a) - comboComplexity(b));
+  for (let i = 0; i < count; i++) {
+    const lo = Math.floor((i * sorted.length) / count);
+    const hi = Math.max(lo + 1, Math.floor(((i + 1) * sorted.length) / count));
+    out.push(shuffle(sorted.slice(lo, hi))[0]);
   }
   return out;
-}
-
-/** Easiest-first: fewer punches, then fewer total moves. Drives the round
- * progression so early rounds are simpler than later ones. */
-function byProgression(a: BoxingCombo, b: BoxingCombo): number {
-  return a.punches - b.punches || a.moves - b.moves;
 }
 
 /**
@@ -54,7 +54,10 @@ export function generateBoxingWorkout(
   settings: WorkoutSettings,
 ): GeneratedWorkout {
   const format = getFormat(settings.formatId);
-  const { work, rest, roundRest } = scaledIntervals(format, settings.intensity);
+  const { work, rest, roundRest } = scaledIntervals(format, settings.intensity, {
+    work: settings.customWork,
+    rest: settings.customRest,
+  });
   const perRound = format.exercisesPerRound;
 
   const totalTarget = settings.targetMinutes * 60;
@@ -87,40 +90,22 @@ export function generateBoxingWorkout(
     includeFootwork: settings.includeFootwork,
   });
 
-  // Basics (jab, jab-cross, …) open the workout — no overhands or complex
-  // combos. Fall back to the full pool only if somehow none qualify.
-  const basics = comboPool.filter(isBasicCombo);
-  const basicsPool = basics.length > 0 ? basics : comboPool;
-
-  // Build the per-round combo sets, then flatten in round order.
-  //  - Interval formats repeat one fixed set every round; it opens with the
-  //    easiest basic and then progresses easy→hard.
-  //  - Other formats make round 1 all basics, then later rounds progress
-  //    through the full pool from simplest to longest combos.
+  // Build the per-round combo sets so the whole workout ramps simplest→hardest:
+  // straight punches first, then hooks, uppercuts, and finally the advanced
+  // layer (overhands and slips/blocks/ducks/footwork). See comboComplexity.
+  //  - Interval formats repeat one fixed set every round; that set ramps
+  //    internally from its easiest combo to its hardest.
+  //  - Other formats spread one continuous ramp across every round, so each
+  //    round picks up where the previous left off and ends harder than it began.
   let roundSets: BoxingCombo[][];
   if (format.repeat) {
-    const opener = [...basicsPool].sort(byProgression)[0];
-    const rest = sampleCombos(
-      comboPool.filter((c) => c.id !== opener.id),
-      perRound - 1,
-    ).sort(byProgression);
-    const base = [opener, ...rest];
+    const base = rampedSelection(comboPool, perRound);
     roundSets = Array.from({ length: rounds }, () => base);
   } else {
-    const round1 = sampleCombos(basicsPool, perRound).sort(byProgression);
-    if (rounds === 1) {
-      roundSets = [round1];
-    } else {
-      const sample = sampleCombos(comboPool, (rounds - 1) * perRound).sort(
-        byProgression,
-      );
-      roundSets = [
-        round1,
-        ...Array.from({ length: rounds - 1 }, (_, r) =>
-          sample.slice(r * perRound, (r + 1) * perRound),
-        ),
-      ];
-    }
+    const all = rampedSelection(comboPool, rounds * perRound);
+    roundSets = Array.from({ length: rounds }, (_, r) =>
+      all.slice(r * perRound, (r + 1) * perRound),
+    );
   }
   const picks: Exercise[] = roundSets.flat().map(comboToExercise);
 
@@ -176,13 +161,15 @@ export function generateBoxingWorkout(
       if (isRoundEnd && roundRest > 0) {
         // Passive rest between rounds — breathe and grab water.
         steps.push({ kind: "roundRest", seconds: roundRest, round: r, label: "Round Rest" });
-      } else if (active) {
-        // Active recovery between combos.
-        const move = recoveryByRound[r - 1][i];
-        steps.push({ kind: "recovery", seconds: rest, exercise: move, round: r, label: "Active Recovery" });
-      } else {
-        // Plain rest between combos.
-        steps.push({ kind: "rest", seconds: rest, round: r, label: "Rest" });
+      } else if (rest > 0) {
+        // A gap between combos. Zero-length recovery (custom slider at 0) is
+        // skipped entirely, so combos run back-to-back like a real round.
+        if (active) {
+          const move = recoveryByRound[r - 1][i];
+          steps.push({ kind: "recovery", seconds: rest, exercise: move, round: r, label: "Active Recovery" });
+        } else {
+          steps.push({ kind: "rest", seconds: rest, round: r, label: "Rest" });
+        }
       }
     }
   }

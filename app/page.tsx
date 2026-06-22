@@ -9,6 +9,7 @@ import CompleteScreen from "@/components/CompleteScreen";
 import SettingsScreen from "@/components/SettingsScreen";
 import { generateWorkout } from "@/lib/generateWorkout";
 import { generateBoxingWorkout } from "@/lib/generateBoxingWorkout";
+import { swapStep } from "@/lib/swapStep";
 import { activeExercises } from "@/lib/exerciseStore";
 import { useExerciseStore } from "@/lib/useExerciseStore";
 import type { GeneratedWorkout, WorkoutSettings } from "@/lib/types";
@@ -65,6 +66,14 @@ export default function Home() {
     );
   }, [store]);
 
+  // Swap a single work / active-recovery segment for another random one.
+  const handleSwapStep = useCallback(
+    (stepIndex: number) => {
+      setWorkout((w) => (w ? swapStep(w, stepIndex, activeExercises(store)) : w));
+    },
+    [store],
+  );
+
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-2xl flex-col px-5 py-6">
       {!checking && !unlocked && <LockScreen onUnlock={handleUnlock} />}
@@ -92,6 +101,7 @@ export default function Home() {
           workout={workout}
           onBack={() => setPhase("build")}
           onRegenerate={handleRegenerate}
+          onSwapStep={handleSwapStep}
           onStart={() => setPhase("run")}
         />
       )}

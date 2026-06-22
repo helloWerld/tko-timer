@@ -86,6 +86,13 @@ export default function BuilderScreen({
   const [intensity, setIntensity] = useState<Intensity>(
     initial?.intensity ?? "medium",
   );
+  // Custom work/rest seconds, used when intensity is "custom" (boxing only).
+  const [customWork, setCustomWork] = useState<number>(
+    initial?.customWork ?? 40,
+  );
+  const [customRest, setCustomRest] = useState<number>(
+    initial?.customRest ?? 20,
+  );
   const [targetMinutes, setTargetMinutes] = useState<number>(
     initial?.targetMinutes ?? 20,
   );
@@ -110,12 +117,19 @@ export default function BuilderScreen({
     preloadVoice();
   }, []);
 
-  const preview = useMemo(() => {
-    const fmt = getFormat(formatId);
-    return scaledIntervals(fmt, intensity);
-  }, [formatId, intensity]);
-
   const boxing = mode === "boxing";
+  // Guard against a stale saved formatId (the boxing presets changed): fall back
+  // to "Mixed bag" so the Format toggle always has a valid selection.
+  const boxFormatId = BOXING_FORMATS.some((f) => f.id === formatId)
+    ? formatId
+    : "box-mixed";
+  const effectiveFormatId = boxing ? boxFormatId : formatId;
+
+  const preview = useMemo(() => {
+    const fmt = getFormat(effectiveFormatId);
+    return scaledIntervals(fmt, intensity, { work: customWork, rest: customRest });
+  }, [effectiveFormatId, intensity, customWork, customRest]);
+
   const formats = boxing ? BOXING_FORMATS : FORMATS;
   // Sections are conditional, so number them in document order at render time.
   let stepNo = 0;
@@ -177,28 +191,44 @@ export default function BuilderScreen({
         </Section>
       )}
 
-      <Section label="Format" step={step()}>
-        <div className="flex flex-col gap-2.5">
-          {formats.map((f) => (
-            <button
-              key={f.id}
-              onClick={() => setFormatId(f.id)}
-              className={`flex items-center justify-between rounded-2xl border px-4 py-3.5 text-left transition ${
-                formatId === f.id
-                  ? "border-accent bg-accent/10"
-                  : "border-ink/10 bg-ink/[0.03] hover:border-ink/25"
-              }`}
-            >
-              <span>
-                <span className="block font-bold">{f.name}</span>
-                <span className="block text-xs text-ink/45">{f.blurb}</span>
-              </span>
-              <span className="text-xs font-semibold text-ink/40">
-                {f.exercisesPerRound} {boxing ? "combos" : "moves"}
-              </span>
-            </button>
-          ))}
-        </div>
+      <Section
+        label="Format"
+        step={step()}
+        hint={boxing ? "How combos vary across rounds" : undefined}
+      >
+        {boxing ? (
+          <Segmented
+            options={BOXING_FORMATS.map((f) => ({
+              id: f.id,
+              label: f.name,
+              sub: f.blurb,
+            }))}
+            value={effectiveFormatId}
+            onChange={(v) => setFormatId(v)}
+          />
+        ) : (
+          <div className="flex flex-col gap-2.5">
+            {formats.map((f) => (
+              <button
+                key={f.id}
+                onClick={() => setFormatId(f.id)}
+                className={`flex items-center justify-between rounded-2xl border px-4 py-3.5 text-left transition ${
+                  formatId === f.id
+                    ? "border-accent bg-accent/10"
+                    : "border-ink/10 bg-ink/[0.03] hover:border-ink/25"
+                }`}
+              >
+                <span>
+                  <span className="block font-bold">{f.name}</span>
+                  <span className="block text-xs text-ink/45">{f.blurb}</span>
+                </span>
+                <span className="text-xs font-semibold text-ink/40">
+                  {f.exercisesPerRound} moves
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
       </Section>
 
       <Section
@@ -263,16 +293,77 @@ export default function BuilderScreen({
         </Section>
       )}
 
-      <Section label="Intensity" step={step()} hint="Tunes work vs. rest length">
-        <Segmented
-          options={INTENSITIES.map((i) => ({
-            id: i.id,
-            label: i.name,
-            sub: i.hint,
-          }))}
-          value={intensity}
-          onChange={(v) => setIntensity(v as Intensity)}
-        />
+      <Section
+        label="Intensity"
+        step={step()}
+        hint={boxing ? "Presets, or Custom to set your own timing" : "Tunes work vs. rest length"}
+      >
+        <div className="flex flex-col gap-2.5">
+          {[
+            ...INTENSITIES,
+            ...(boxing
+              ? [{ id: "custom" as Intensity, name: "Custom", hint: "Set your own timing" }]
+              : []),
+          ].map((opt) => {
+            const workWord = boxing ? "combo" : "work";
+            const recWord = boxing
+              ? recoveryStyle === "active"
+                ? "recovery"
+                : "rest"
+              : "rest";
+            // Presets show their scaled timing; Custom is set via the sliders.
+            let timing = "";
+            if (opt.id !== "custom") {
+              const t = scaledIntervals(getFormat(effectiveFormatId), opt.id);
+              timing =
+                t.rest > 0
+                  ? `${t.work}s ${workWord} / ${t.rest}s ${recWord}`
+                  : `${t.work}s ${workWord} · back-to-back`;
+            }
+            return (
+              <button
+                key={opt.id}
+                onClick={() => setIntensity(opt.id)}
+                className={`flex items-center justify-between rounded-2xl border px-4 py-3.5 text-left transition ${
+                  intensity === opt.id
+                    ? "border-accent bg-accent/10"
+                    : "border-ink/10 bg-ink/[0.03] hover:border-ink/25"
+                }`}
+              >
+                <span>
+                  <span className="block font-bold">{opt.name}</span>
+                  <span className="block text-xs text-ink/45">{opt.hint}</span>
+                </span>
+                {timing && (
+                  <span className="whitespace-nowrap text-xs font-semibold text-ink/40">
+                    {timing}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+        {boxing && intensity === "custom" && (
+          <div className="mt-2.5 flex flex-col gap-2.5">
+            <RangeRow
+              label="Work per combo"
+              value={customWork}
+              min={10}
+              max={180}
+              step={5}
+              onChange={setCustomWork}
+            />
+            <RangeRow
+              label={recoveryStyle === "active" ? "Active recovery" : "Rest between combos"}
+              value={customRest}
+              min={0}
+              max={90}
+              step={5}
+              zeroLabel="back-to-back"
+              onChange={setCustomRest}
+            />
+          </div>
+        )}
       </Section>
 
       <Section label="Duration" step={step()}>
@@ -296,8 +387,15 @@ export default function BuilderScreen({
             className="mt-3 w-full accent-[rgb(var(--accent-rgb))]"
           />
           <p className="mt-3 text-xs text-ink/40">
-            ≈ {preview.work}s {boxing ? "combo" : "work"} / {preview.rest}s{" "}
-            {boxing ? "active recovery" : "rest"} per {boxing ? "combo" : "move"}
+            {preview.rest > 0
+              ? `≈ ${preview.work}s ${boxing ? "combo" : "work"} / ${preview.rest}s ${
+                  boxing
+                    ? recoveryStyle === "active"
+                      ? "active recovery"
+                      : "rest"
+                    : "rest"
+                } per ${boxing ? "combo" : "move"}`
+              : `≈ ${preview.work}s per ${boxing ? "combo" : "move"}, back-to-back`}
             {preview.roundRest > 0 ? ` · ${preview.roundRest}s round rest` : ""}
           </p>
         </div>
@@ -362,9 +460,11 @@ export default function BuilderScreen({
           onBuild({
             mode,
             goal,
-            formatId,
+            formatId: effectiveFormatId,
             difficulty,
             intensity,
+            customWork,
+            customRest,
             targetMinutes,
             soundMode,
             includeWarmup,
@@ -468,6 +568,52 @@ function ToggleRow({
         />
       </span>
     </button>
+  );
+}
+
+function RangeRow({
+  label,
+  value,
+  min,
+  max,
+  step,
+  zeroLabel,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  /** Shown instead of "0s" when the value is 0 (e.g. "back-to-back"). */
+  zeroLabel?: string;
+  onChange: (v: number) => void;
+}) {
+  return (
+    <div className="rounded-2xl border border-ink/10 bg-ink/[0.03] px-4 py-3.5">
+      <div className="flex items-baseline justify-between">
+        <span className="text-sm text-ink/50">{label}</span>
+        <span className="text-xl font-black">
+          {value === 0 && zeroLabel ? (
+            <span className="text-sm font-bold text-ink/50">{zeroLabel}</span>
+          ) : (
+            <>
+              {value}
+              <span className="ml-0.5 text-xs font-semibold text-ink/40">s</span>
+            </>
+          )}
+        </span>
+      </div>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="mt-2.5 w-full accent-[rgb(var(--accent-rgb))]"
+      />
+    </div>
   );
 }
 

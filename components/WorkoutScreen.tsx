@@ -116,24 +116,34 @@ export default function WorkoutScreen({
     else if (s.kind === "warmup" || s.kind === "cooldown") stretchCue();
     else if (s.kind === "prep" && voice) getReadyVoice();
 
-    // Announce the upcoming combo (notation numbers + names) early in any break
-    // before a combo — round rests, active recovery, and plain rests between
-    // combos — so it lands well before the countdown: "Up next, one three, Jab,
-    // Lead Hook". The Get Ready prep announces the first combo as "Up first, …".
+    // Announce the upcoming combo by name early in any break before a combo —
+    // round rests, active recovery, and plain rests between combos — so it lands
+    // well before the countdown: "Up next, Jab, Lead Hook". The very first combo
+    // is introduced as "Up first, …" at the last break before round 1.
+    //
+    // When a warm-up precedes round 1, that intro waits for the warm-up→round-1
+    // break instead of firing back at "Get Ready" — otherwise the combo is
+    // announced before the whole warm-up, long before it's needed.
     const announceKinds =
       s.kind === "roundRest" ||
       s.kind === "recovery" ||
       s.kind === "rest" ||
       s.kind === "prep";
     if (voice && boxing && announceKinds) {
-      const first = s.kind === "prep";
-      const target = first
-        ? steps.find((n) => n.kind === "work")
-        : steps.slice(stepIndex + 1).find((n) => n.kind === "work");
+      const firstWorkIndex = steps.findIndex((n) => n.kind === "work");
+      const warmupBeforeFirstWork = steps
+        .slice(0, firstWorkIndex)
+        .some((n) => n.kind === "warmup");
+      // On prep, stay quiet if a warm-up sits before round 1 — its break covers
+      // the intro. Otherwise announce the next upcoming combo.
+      const skipPrepIntro = s.kind === "prep" && warmupBeforeFirstWork;
+      const target = steps.slice(stepIndex + 1).find((n) => n.kind === "work");
       const ex = target?.exercise;
-      if (ex) {
+      if (ex && !skipPrepIntro) {
+        // "Up first" when this break leads into the very first combo.
+        const first = steps.indexOf(target!) === firstWorkIndex;
         // On prep let "Get ready!" play first; on a rest start almost at once.
-        const delay = first ? 1100 : 700;
+        const delay = s.kind === "prep" ? 1100 : 700;
         speechTimerRef.current = setTimeout(
           () => speakCombo(ex.name, ex.cue, { first }),
           delay,

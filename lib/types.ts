@@ -7,7 +7,9 @@ export type RecoveryStyle = "active" | "rest";
 
 export type Difficulty = "beginner" | "intermediate" | "advanced";
 
-export type Intensity = "low" | "medium" | "high";
+/** "custom" lets the user set work/rest seconds directly (see customWork /
+ * customRest); low/medium/high scale the format's base timing instead. */
+export type Intensity = "low" | "medium" | "high" | "custom";
 
 export type SoundMode = "voice" | "beep";
 
@@ -73,6 +75,10 @@ export interface WorkoutSettings {
   formatId: string;
   difficulty: Difficulty;
   intensity: Intensity;
+  /** Custom work seconds per combo/move — used only when intensity is "custom". */
+  customWork: number;
+  /** Custom rest/recovery seconds — used only when intensity is "custom". */
+  customRest: number;
   /** Target total duration in minutes. */
   targetMinutes: number;
   /** Spoken voice cues vs. synthesized beeps. */

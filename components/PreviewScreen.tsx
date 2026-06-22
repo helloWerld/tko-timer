@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { ChevronDown, ChevronLeft, Play, Shuffle } from "lucide-react";
+import { useRef, useState } from "react";
+import { ChevronDown, ChevronLeft, Play, RefreshCw, Shuffle } from "lucide-react";
 import { GOALS } from "@/lib/formats";
 import { formatClock } from "@/lib/time";
 import { unlockAudio, unlockVoice } from "@/lib/audio";
@@ -11,11 +11,14 @@ export default function PreviewScreen({
   workout,
   onBack,
   onRegenerate,
+  onSwapStep,
   onStart,
 }: {
   workout: GeneratedWorkout;
   onBack: () => void;
   onRegenerate: () => void;
+  /** Swap the single step at this global index for another random one. */
+  onSwapStep: (stepIndex: number) => void;
   onStart: () => void;
 }) {
   const { settings, format, steps, rounds, totalSeconds } = workout;
@@ -81,7 +84,9 @@ export default function PreviewScreen({
           <StretchSection
             title="Warm-Up"
             accent="text-gold"
-            steps={warmupSteps}
+            items={warmupSteps}
+            allSteps={steps}
+            onSwapStep={onSwapStep}
           />
         )}
 
@@ -91,15 +96,16 @@ export default function PreviewScreen({
               Round {round}
             </h3>
             <ol className="space-y-1.5">
-              {list.map((s, i) => (
+              {list.map((s) => (
                 <ExerciseItem
-                  key={i}
+                  key={steps.indexOf(s)}
                   step={s}
                   accent={
                     s.kind === "recovery"
                       ? "text-[color:var(--warm-fg)]"
                       : "text-accent"
                   }
+                  onSwap={() => onSwapStep(steps.indexOf(s))}
                 />
               ))}
             </ol>
@@ -110,7 +116,9 @@ export default function PreviewScreen({
           <StretchSection
             title="Cool-Down"
             accent="text-[color:var(--cool-fg)]"
-            steps={cooldownSteps}
+            items={cooldownSteps}
+            allSteps={steps}
+            onSwapStep={onSwapStep}
           />
         )}
       </div>
@@ -134,11 +142,16 @@ export default function PreviewScreen({
 function StretchSection({
   title,
   accent,
-  steps,
+  items,
+  allSteps,
+  onSwapStep,
 }: {
   title: string;
   accent: string;
-  steps: IntervalStep[];
+  items: IntervalStep[];
+  /** Full step list, so each card knows its global index for swapping. */
+  allSteps: IntervalStep[];
+  onSwapStep: (stepIndex: number) => void;
 }) {
   return (
     <div>
@@ -148,54 +161,138 @@ function StretchSection({
         {title}
       </h3>
       <ol className="space-y-1.5">
-        {steps.map((s, i) => (
-          <ExerciseItem key={i} step={s} accent={accent} />
+        {items.map((s) => (
+          <ExerciseItem
+            key={allSteps.indexOf(s)}
+            step={s}
+            accent={accent}
+            onSwap={() => onSwapStep(allSteps.indexOf(s))}
+          />
         ))}
       </ol>
     </div>
   );
 }
 
-/** A tappable exercise row that expands to show the how-to description. */
+/** Distance (px) a card must be dragged right before releasing swaps it. */
+const SWAP_THRESHOLD = 80;
+
+/**
+ * A tappable exercise row that expands to show the how-to description. When
+ * `onSwap` is provided the card can be dragged to the right and released to
+ * swap it for another random pick (work / active-recovery cards only).
+ */
 function ExerciseItem({
   step,
   accent,
+  onSwap,
 }: {
   step: IntervalStep;
   accent: string;
+  onSwap?: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [dragX, setDragX] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const startX = useRef<number | null>(null);
+  const dragXRef = useRef(0);
+  const moved = useRef(false);
   const ex = step.exercise;
   if (!ex) return null;
 
+  const swipeable = Boolean(onSwap);
+  const armed = dragX >= SWAP_THRESHOLD;
+  const progress = Math.min(dragX / SWAP_THRESHOLD, 1);
+
+  const setDrag = (px: number) => {
+    dragXRef.current = px;
+    setDragX(px);
+  };
+  const onPointerDown = (e: React.PointerEvent) => {
+    if (!swipeable) return;
+    startX.current = e.clientX;
+    moved.current = false;
+    setDragging(true);
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+  };
+  const onPointerMove = (e: React.PointerEvent) => {
+    if (startX.current == null) return;
+    const dx = e.clientX - startX.current;
+    if (Math.abs(dx) > 4) moved.current = true;
+    // Rightward only; a little resistance past the threshold.
+    setDrag(dx <= 0 ? 0 : dx > SWAP_THRESHOLD ? SWAP_THRESHOLD + (dx - SWAP_THRESHOLD) * 0.35 : dx);
+  };
+  const endDrag = () => {
+    if (startX.current == null) return;
+    startX.current = null;
+    setDragging(false);
+    if (dragXRef.current >= SWAP_THRESHOLD) onSwap?.();
+    setDrag(0);
+  };
+
   return (
-    <li className="rounded-xl border border-ink/10 bg-ink/[0.03]">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        className="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left"
-      >
-        <span className="min-w-0">
-          <span className="block font-bold">{ex.name}</span>
-          <span className="block text-xs text-ink/40">{ex.cue}</span>
+    <li className="relative overflow-hidden rounded-xl border border-ink/10 bg-ink/[0.03]">
+      {/* Revealed behind the card as it slides right. */}
+      {swipeable && (
+        <span
+          aria-hidden
+          className={`pointer-events-none absolute inset-y-0 left-0 flex items-center gap-1.5 pl-4 text-xs font-bold uppercase tracking-wider transition-colors ${
+            armed ? "text-accent" : "text-ink/40"
+          }`}
+          style={{ opacity: progress }}
+        >
+          <RefreshCw className="h-4 w-4" />
+          {armed ? "Release to swap" : "Swap"}
         </span>
-        <span className="flex shrink-0 items-center gap-2">
-          {ex.description && (
-            <ChevronDown
-              className={`h-4 w-4 text-ink/30 transition-transform ${open ? "rotate-180" : ""}`}
-              aria-hidden
-            />
-          )}
-          <span className={`font-mono text-sm font-bold ${accent}`}>
-            {step.seconds}s
-          </span>
-        </span>
-      </button>
-      {open && ex.description && (
-        <p className="border-t border-ink/5 px-4 py-2.5 text-sm leading-relaxed text-ink/60">
-          {ex.description}
-        </p>
       )}
+
+      <div
+        className={`relative rounded-xl bg-[color:var(--surface)] ${dragging ? "select-none" : ""}`}
+        style={{
+          transform: `translateX(${dragX}px)`,
+          transition: dragging ? "none" : "transform 0.2s ease-out",
+          // Let vertical scrolling through on touch; we own horizontal drags.
+          touchAction: swipeable ? "pan-y" : undefined,
+        }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+      >
+        <button
+          onClick={() => {
+            // A drag ended in a click event — don't also toggle the description.
+            if (moved.current) {
+              moved.current = false;
+              return;
+            }
+            setOpen((v) => !v);
+          }}
+          aria-expanded={open}
+          className="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left"
+        >
+          <span className="min-w-0">
+            <span className="block font-bold">{ex.name}</span>
+            <span className="block text-xs text-ink/40">{ex.cue}</span>
+          </span>
+          <span className="flex shrink-0 items-center gap-2">
+            {ex.description && (
+              <ChevronDown
+                className={`h-4 w-4 text-ink/30 transition-transform ${open ? "rotate-180" : ""}`}
+                aria-hidden
+              />
+            )}
+            <span className={`font-mono text-sm font-bold ${accent}`}>
+              {step.seconds}s
+            </span>
+          </span>
+        </button>
+        {open && ex.description && (
+          <p className="border-t border-ink/5 px-4 py-2.5 text-sm leading-relaxed text-ink/60">
+            {ex.description}
+          </p>
+        )}
+      </div>
     </li>
   );
 }
