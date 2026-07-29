@@ -149,6 +149,13 @@ export default function BuilderScreen({
           </p>
         </div>
         <div className="mt-1 flex items-center gap-2">
+          <a
+            href="/combos"
+            aria-label="Jabster combo trainer"
+            className="flex h-10 w-10 items-center justify-center rounded-full border border-ink/15 text-lg transition hover:border-ink/40"
+          >
+            🥊
+          </a>
           <ThemeToggle />
           <button
             onClick={onOpenSettings}
