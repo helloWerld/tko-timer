@@ -35,13 +35,15 @@ const RED = "#C13127";
 const CARD = "#FAF6E7";
 const SHADOW = "0 4px 14px rgba(15, 25, 35, 0.27)";
 
+// Slips and ducks show as compact notation (SL/SR/DL/DR); the voice still
+// says the full "Slip left" etc. Blocks stay spelled out.
 const DEFENSE_LABELS: Record<string, string> = {
-  slipL: "SLIP LEFT",
-  slipR: "SLIP RIGHT",
+  slipL: "SL",
+  slipR: "SR",
   blockL: "BLOCK LEFT",
   blockR: "BLOCK RIGHT",
-  duckL: "DUCK LEFT",
-  duckR: "DUCK RIGHT",
+  duckL: "DL",
+  duckR: "DR",
 };
 const DEFENSE = new Set(Object.keys(DEFENSE_LABELS));
 
@@ -328,8 +330,8 @@ export default function ComboTrainer() {
       .split("-")
       .map((t) => DEFENSE_LABELS[t] ?? t)
       .join(" · ").length;
-    const vw = Math.min(185 / chars, 24);
-    return `min(${vw.toFixed(1)}vw, 130px)`;
+    const vw = Math.min(200 / chars, 26);
+    return `min(${vw.toFixed(1)}vw, 150px)`;
   };
 
   // ================= HOME =================
@@ -509,7 +511,9 @@ export default function ComboTrainer() {
                 ...anton,
                 fontSize: current
                   ? currentSize(c)
-                  : c.split("-").some((t) => t.length > 4)
+                  : c
+                        .split("-")
+                        .some((t) => (DEFENSE_LABELS[t] ?? t).length > 4)
                     ? "min(4.4vw, 21px)"
                     : "min(5.5vw, 26px)",
                 opacity: current ? 1 : 0.28,
