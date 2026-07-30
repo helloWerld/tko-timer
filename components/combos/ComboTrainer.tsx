@@ -46,7 +46,6 @@ const DEFENSE_LABELS: Record<string, string> = {
 const DEFENSE = new Set(Object.keys(DEFENSE_LABELS));
 
 // Adjustable timings (seconds), persisted per device.
-const GAP = { key: "combo-trainer-gap", def: 6, min: 2, max: 15, step: 1 };
 const START = { key: "combo-trainer-start", def: 15, min: 5, max: 60, step: 5 };
 const BETWEEN = { key: "combo-trainer-between", def: 8, min: 3, max: 20, step: 1 };
 
@@ -163,7 +162,6 @@ export default function ComboTrainer() {
   const [voiceOn, setVoiceOn] = useState(true);
   const [autoOn, setAutoOn] = useState(false);
 
-  const [gap, changeGap] = usePersistedSeconds(GAP);
   const [startGap, changeStartGap] = usePersistedSeconds(START);
   const [betweenGap, changeBetweenGap] = usePersistedSeconds(BETWEEN);
 
@@ -272,19 +270,33 @@ export default function ComboTrainer() {
     return () => clearTimeout(t);
   }, [phase, count]);
 
-  // Speak the current combo and (re)arm the auto-advance timer whenever the
-  // shown combo changes — a manual tap therefore resets the gap.
+  // Speak the current combo, then auto-advance. The wait starts only after
+  // the voice cue has fully finished (cues must never get cut off) and lasts
+  // 1 second per move in the combo — a 1-punch combo gets cue + 1s, a 5-move
+  // combo gets cue + 5s of drill time.
   useEffect(() => {
     if (!reel || done || phase !== "run") return;
-    if (voiceOn) speakCombo(reel.combos[idx]);
-    if (!autoOn) return;
-    const t = setTimeout(() => {
-      if (idx < reel.combos.length - 1) setIdx(idx + 1);
-      else finishReel();
-    }, gap * 1000);
-    return () => clearTimeout(t);
+    let cancelled = false;
+    let t: ReturnType<typeof setTimeout> | undefined;
+    const moves = reel.combos[idx].split("-").length;
+    const arm = (cueSeconds: number) => {
+      if (cancelled || !autoOn) return;
+      t = setTimeout(
+        () => {
+          if (idx < reel.combos.length - 1) setIdx(idx + 1);
+          else finishReel();
+        },
+        (cueSeconds + moves) * 1000,
+      );
+    };
+    if (voiceOn) void speakCombo(reel.combos[idx]).then(arm);
+    else arm(0);
+    return () => {
+      cancelled = true;
+      if (t) clearTimeout(t);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reel, idx, autoOn, gap, done, phase]);
+  }, [reel, idx, autoOn, done, phase]);
 
   useEffect(() => {
     if (done) {
@@ -516,11 +528,6 @@ export default function ComboTrainer() {
           Combo {idx + 1} of {reel.combos.length} · tap to advance · left edge
           goes back
         </div>
-      </div>
-
-      {/* combo-gap stepper */}
-      <div className="px-4 pt-2">
-        <Stepper label="Gap between combos" value={gap} onChange={changeGap} />
       </div>
 
       {/* controls */}

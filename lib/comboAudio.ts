@@ -63,16 +63,18 @@ export function stopComboSpeech(): void {
   playing = null;
 }
 
-/** Speak a sequence of clip names back-to-back. Cancels anything in flight. */
-async function playSequence(names: string[]): Promise<void> {
+/** Speak a sequence of clip names back-to-back. Cancels anything in flight.
+ * Resolves with the total spoken duration in seconds (0 if audio is
+ * unavailable or the sequence was cancelled before it started). */
+async function playSequence(names: string[]): Promise<number> {
   const c = context();
-  if (!c) return;
+  if (!c) return 0;
   if (c.state === "suspended") await c.resume().catch(() => {});
   stopComboSpeech();
   const run = { sources: [] as AudioBufferSourceNode[], cancelled: false };
   playing = run;
   const clips = await Promise.all(names.map(loadClip));
-  if (run.cancelled) return;
+  if (run.cancelled) return 0;
   let at = c.currentTime + 0.05;
   for (const buf of clips) {
     if (!buf) continue;
@@ -83,11 +85,13 @@ async function playSequence(names: string[]): Promise<void> {
     run.sources.push(src);
     at += buf.duration + CLIP_GAP_S;
   }
+  return at - c.currentTime;
 }
 
-/** Speak one combo, e.g. "1-2b-slip-3" → one, two to the body, slip, three. */
-export function speakCombo(combo: string): void {
-  void playSequence(combo.split("-"));
+/** Speak one combo, e.g. "1-2b-slipL-3" → one, two body, slip left, three.
+ * Resolves with the cue's duration so callers can wait for it to finish. */
+export function speakCombo(combo: string): Promise<number> {
+  return playSequence(combo.split("-"));
 }
 
 export function speakReelComplete(): void {
