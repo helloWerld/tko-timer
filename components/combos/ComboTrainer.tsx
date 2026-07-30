@@ -3,22 +3,23 @@
 /**
  * Jabster Combo Trainer — a standalone section, fully separate from the timer.
  *
- * 309 "reels": each is a progressive ladder of combos (1 → 1-2 → 1-2-3 …).
- * Home screen filters by starting punch + style; the trainer shows the whole
- * reel as a stacked ladder with the current combo blown up big, speaks each
- * combo with the Russell voice clips, and can auto-advance on a settable gap.
+ * 309 "reels": each is a progressive ladder of combos (1 move → 5 moves).
+ * Home screen filters by starting punch + style. Every reel opens on a START
+ * overlay with an adjustable get-ready countdown (time to glove up and set
+ * your stance) before the first combo shows/speaks.
+ *
+ * Two modes:
+ *  - manual (tap a reel card): tap/auto through the ladder, finish banner.
+ *  - cycle  (RANDOM REEL): auto-play is on and finishing a reel rolls
+ *    straight into a new random reel after a short adjustable countdown —
+ *    no finish screen — until STOP is pressed. Built for recording several
+ *    reels back to back.
  *
  * Styling follows the Jabster style guide: cream #F2ECD8, navy #1E3A4C,
  * glove red #C13127, Anton for big numbers, Barlow SemiCondensed for subtext.
  */
 
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { COMBO_REELS, COMBO_STYLES, type ComboReel } from "@/lib/comboReels";
 import {
   preloadComboClips,
@@ -43,16 +44,84 @@ const DEFENSE_LABELS: Record<string, string> = {
   duckR: "DUCK RIGHT",
 };
 const DEFENSE = new Set(Object.keys(DEFENSE_LABELS));
-const GAP_MIN = 2;
-const GAP_MAX = 15;
-const GAP_DEFAULT = 6;
-const GAP_KEY = "combo-trainer-gap";
+
+// Adjustable timings (seconds), persisted per device.
+const GAP = { key: "combo-trainer-gap", def: 6, min: 2, max: 15, step: 1 };
+const START = { key: "combo-trainer-start", def: 15, min: 5, max: 60, step: 5 };
+const BETWEEN = { key: "combo-trainer-between", def: 8, min: 3, max: 20, step: 1 };
+
+type Mode = "manual" | "cycle";
+/** ready = START overlay · countdown = get-ready timer · between = short
+ * timer before the next random reel · run = drilling combos. */
+type Phase = "ready" | "countdown" | "between" | "run";
 
 const anton = { fontFamily: "var(--font-anton)" } as const;
 const barlow = { fontFamily: "var(--font-barlow)" } as const;
 
 function reelTokens(reel: ComboReel): string[] {
   return [...new Set(reel.combos.flatMap((c) => c.split("-")))];
+}
+
+function usePersistedSeconds(cfg: {
+  key: string;
+  def: number;
+  min: number;
+  max: number;
+  step: number;
+}) {
+  const [value, setValue] = useState(cfg.def);
+  useEffect(() => {
+    const saved = Number(localStorage.getItem(cfg.key));
+    if (saved >= cfg.min && saved <= cfg.max) setValue(saved);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const change = (dir: number) =>
+    setValue((v) => {
+      const next = Math.min(cfg.max, Math.max(cfg.min, v + dir * cfg.step));
+      localStorage.setItem(cfg.key, String(next));
+      return next;
+    });
+  return [value, change] as const;
+}
+
+function Stepper({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  onChange: (dir: number) => void;
+}) {
+  return (
+    <div className="flex items-center justify-center gap-3">
+      <span
+        className="text-xs uppercase tracking-widest opacity-60"
+        style={anton}
+      >
+        {label}
+      </span>
+      <button
+        onClick={() => onChange(-1)}
+        className="h-9 w-9 rounded-full border-2 text-xl leading-none"
+        style={{ ...anton, borderColor: NAVY, color: NAVY }}
+        aria-label={`Shorter ${label.toLowerCase()}`}
+      >
+        −
+      </button>
+      <span className="w-10 text-center text-xl" style={anton}>
+        {value}s
+      </span>
+      <button
+        onClick={() => onChange(1)}
+        className="h-9 w-9 rounded-full border-2 text-xl leading-none"
+        style={{ ...anton, borderColor: NAVY, color: NAVY }}
+        aria-label={`Longer ${label.toLowerCase()}`}
+      >
+        +
+      </button>
+    </div>
+  );
 }
 
 /** One combo as inline tokens: numbers navy, body + defense pop red. */
@@ -88,25 +157,17 @@ export default function ComboTrainer() {
   const [reel, setReel] = useState<ComboReel | null>(null);
   const [idx, setIdx] = useState(0);
   const [done, setDone] = useState(false);
+  const [mode, setMode] = useState<Mode>("manual");
+  const [phase, setPhase] = useState<Phase>("ready");
+  const [count, setCount] = useState(0);
   const [voiceOn, setVoiceOn] = useState(true);
   const [autoOn, setAutoOn] = useState(false);
-  const [gap, setGap] = useState(GAP_DEFAULT);
 
-  const autoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [gap, changeGap] = usePersistedSeconds(GAP);
+  const [startGap, changeStartGap] = usePersistedSeconds(START);
+  const [betweenGap, changeBetweenGap] = usePersistedSeconds(BETWEEN);
+
   const wakeLock = useRef<WakeLockSentinel | null>(null);
-
-  useEffect(() => {
-    const saved = Number(localStorage.getItem(GAP_KEY));
-    if (saved >= GAP_MIN && saved <= GAP_MAX) setGap(saved);
-  }, []);
-
-  const changeGap = (delta: number) => {
-    setGap((g) => {
-      const next = Math.min(GAP_MAX, Math.max(GAP_MIN, g + delta));
-      localStorage.setItem(GAP_KEY, String(next));
-      return next;
-    });
-  };
 
   const matches = COMBO_REELS.filter(
     (r) =>
@@ -131,49 +192,99 @@ export default function ComboTrainer() {
     return () => document.removeEventListener("visibilitychange", onVisible);
   }, [reel, requestWake]);
 
-  // ---------- trainer flow ----------
-  const startReel = (r: ComboReel) => {
+  // ---------- flow ----------
+  const startReel = (r: ComboReel, m: Mode) => {
     unlockComboAudio();
     preloadComboClips(reelTokens(r));
+    setMode(m);
     setReel(r);
     setIdx(0);
     setDone(false);
+    setPhase("ready");
+    setAutoOn(m === "cycle"); // random cycling auto-plays by default
     void requestWake();
+  };
+
+  const pressStart = () => {
+    unlockComboAudio();
+    setCount(startGap);
+    setPhase("countdown");
+    void requestWake();
+  };
+
+  const randomFrom = (pool: ComboReel[]) =>
+    pool[Math.floor(Math.random() * pool.length)];
+
+  // The auto-advance timer can fire twice for the same combo (dev double
+  // effects, stray double taps), so the end-of-reel transition must only run
+  // once per reel. Reset whenever a reel is actually running again.
+  const endGuard = useRef(false);
+  useEffect(() => {
+    if (phase === "run") endGuard.current = false;
+  }, [phase]);
+
+  /** End of reel: cycle mode rolls into another random reel after a short
+   * countdown; manual mode shows the finish banner. */
+  const finishReel = useCallback(() => {
+    if (endGuard.current) return;
+    endGuard.current = true;
+    if (mode === "cycle") {
+      const pool = matches.filter((r) => r.id !== reel?.id);
+      const next = randomFrom(pool.length ? pool : matches);
+      if (!next) return;
+      preloadComboClips(reelTokens(next));
+      setReel(next);
+      setIdx(0);
+      setDone(false);
+      setCount(betweenGap);
+      setPhase("between");
+    } else {
+      setDone(true);
+      setAutoOn(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, matches, reel, betweenGap]);
+
+  const stopCycling = () => {
+    setMode("manual");
+    setAutoOn(false);
+    if (phase === "between") setPhase("run"); // show the queued reel, paused
   };
 
   const exitReel = () => {
     stopComboSpeech();
-    if (autoTimer.current) clearTimeout(autoTimer.current);
     setAutoOn(false);
     setReel(null);
     setDone(false);
+    setPhase("ready");
     wakeLock.current?.release().catch(() => {});
     wakeLock.current = null;
   };
 
-  // Speak the current combo and (re)arm the auto-advance timer whenever the
-  // shown combo changes — a manual tap therefore resets the gap, like the
-  // original trainer.
+  // Countdown tick (both the get-ready timer and the between-reels timer).
   useEffect(() => {
-    if (!reel || done) return;
-    if (voiceOn) speakCombo(reel.combos[idx]);
-    if (autoOn) {
-      if (autoTimer.current) clearTimeout(autoTimer.current);
-      autoTimer.current = setTimeout(() => {
-        setIdx((i) => {
-          if (!reel) return i;
-          if (i < reel.combos.length - 1) return i + 1;
-          setDone(true);
-          setAutoOn(false);
-          return i;
-        });
-      }, gap * 1000);
+    if (phase !== "countdown" && phase !== "between") return;
+    if (count <= 0) {
+      setPhase("run");
+      return;
     }
-    return () => {
-      if (autoTimer.current) clearTimeout(autoTimer.current);
-    };
+    const t = setTimeout(() => setCount((c) => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [phase, count]);
+
+  // Speak the current combo and (re)arm the auto-advance timer whenever the
+  // shown combo changes — a manual tap therefore resets the gap.
+  useEffect(() => {
+    if (!reel || done || phase !== "run") return;
+    if (voiceOn) speakCombo(reel.combos[idx]);
+    if (!autoOn) return;
+    const t = setTimeout(() => {
+      if (idx < reel.combos.length - 1) setIdx(idx + 1);
+      else finishReel();
+    }, gap * 1000);
+    return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reel, idx, autoOn, gap, done]);
+  }, [reel, idx, autoOn, gap, done, phase]);
 
   useEffect(() => {
     if (done) {
@@ -186,7 +297,7 @@ export default function ComboTrainer() {
   const next = () => {
     if (!reel) return;
     if (idx < reel.combos.length - 1) setIdx(idx + 1);
-    else setDone(true);
+    else finishReel();
   };
   const prev = () => {
     if (idx > 0) setIdx(idx - 1);
@@ -197,19 +308,6 @@ export default function ComboTrainer() {
     if (e.clientX < window.innerWidth * 0.22) prev();
     else next();
   };
-
-  // ---------- stacked ladder centering ----------
-  const stackWrap = useRef<HTMLDivElement>(null);
-  const stack = useRef<HTMLDivElement>(null);
-  const lineRefs = useRef<(HTMLDivElement | null)[]>([]);
-  const [stackY, setStackY] = useState(0);
-
-  useLayoutEffect(() => {
-    const wrap = stackWrap.current;
-    const line = lineRefs.current[idx];
-    if (!wrap || !line) return;
-    setStackY(wrap.clientHeight / 2 - (line.offsetTop + line.offsetHeight / 2));
-  }, [idx, reel]);
 
   // Current-combo font size: scale to the rendered text length so short
   // combos go huge and directional-defense combos still fit on one line.
@@ -303,14 +401,16 @@ export default function ComboTrainer() {
 
           <button
             onClick={() => {
-              if (matches.length)
-                startReel(matches[Math.floor(Math.random() * matches.length)]);
+              if (matches.length) startReel(randomFrom(matches), "cycle");
             }}
             className="mt-6 w-full rounded-2xl py-5 text-2xl uppercase tracking-wide"
             style={{ ...anton, background: RED, color: CREAM, boxShadow: SHADOW }}
           >
-            🎲 Random reel
+            🎲 Random reels
           </button>
+          <p className="mt-2 text-center text-sm font-semibold opacity-55">
+            Auto-plays and keeps rolling new reels until you stop it
+          </p>
 
           <div className="mt-4 text-sm font-semibold opacity-60">
             {matches.length} reels match
@@ -319,7 +419,7 @@ export default function ComboTrainer() {
             {matches.map((r) => (
               <button
                 key={r.id}
-                onClick={() => startReel(r)}
+                onClick={() => startReel(r, "manual")}
                 className="block w-full rounded-2xl border p-4 text-left"
                 style={{
                   background: CARD,
@@ -345,6 +445,7 @@ export default function ComboTrainer() {
   }
 
   // ================= TRAINER =================
+  const reelTag = `${reel.id} · ${reel.style}`;
   return (
     <div
       className="flex h-dvh flex-col overflow-hidden"
@@ -360,7 +461,7 @@ export default function ComboTrainer() {
           ❮ Reels
         </button>
         <div className="text-lg uppercase" style={anton}>
-          {reel.id} · {reel.style}
+          {reelTag}
         </div>
         <div className="w-16" />
       </div>
@@ -380,56 +481,34 @@ export default function ComboTrainer() {
         ))}
       </div>
 
-      {/* stacked combo ladder — tap right to advance, left edge to go back */}
+      {/* stacked combo ladder — the whole reel stays centered on screen; only
+          the current line grows. Tap right to advance, left edge to go back */}
       <div
-        ref={stackWrap}
         onClick={onStackTap}
-        className="relative flex-1 cursor-pointer overflow-hidden"
+        className="relative flex flex-1 cursor-pointer flex-col justify-center overflow-hidden pb-6"
       >
-        <div
-          ref={stack}
-          className="absolute left-0 right-0 transition-transform duration-300 ease-out"
-          style={{ transform: `translateY(${stackY}px)` }}
-        >
-          {reel.combos.map((c, i) => {
-            const current = i === idx;
-            return (
-              <div
-                key={i}
-                ref={(el) => {
-                  lineRefs.current[i] = el;
-                }}
-                className="px-3 text-center leading-tight transition-all duration-300"
-                style={{
-                  ...anton,
-                  fontSize: current
-                    ? currentSize(c)
-                    : c.split("-").some((t) => t.length > 4)
-                      ? "min(4.4vw, 21px)"
-                      : "min(5.5vw, 26px)",
-                  opacity: current ? 1 : 0.28,
-                  paddingTop: current ? 10 : 4,
-                  paddingBottom: current ? 10 : 4,
-                }}
-              >
-                <ComboLine combo={c} dim={!current} />
-              </div>
-            );
-          })}
-        </div>
-        {/* soft fade so the stack melts into the page edges */}
-        <div
-          className="pointer-events-none absolute inset-x-0 top-0 h-16"
-          style={{
-            background: `linear-gradient(${CREAM}, rgba(242, 236, 216, 0))`,
-          }}
-        />
-        <div
-          className="pointer-events-none absolute inset-x-0 bottom-0 h-16"
-          style={{
-            background: `linear-gradient(rgba(242, 236, 216, 0), ${CREAM})`,
-          }}
-        />
+        {reel.combos.map((c, i) => {
+          const current = i === idx;
+          return (
+            <div
+              key={i}
+              className="px-3 text-center leading-tight transition-all duration-300"
+              style={{
+                ...anton,
+                fontSize: current
+                  ? currentSize(c)
+                  : c.split("-").some((t) => t.length > 4)
+                    ? "min(4.4vw, 21px)"
+                    : "min(5.5vw, 26px)",
+                opacity: current ? 1 : 0.28,
+                paddingTop: current ? 8 : 3,
+                paddingBottom: current ? 8 : 3,
+              }}
+            >
+              <ComboLine combo={c} dim={!current} />
+            </div>
+          );
+        })}
         <div
           className="pointer-events-none absolute inset-x-0 bottom-1 text-center text-sm font-semibold"
           style={{ color: "rgba(30, 58, 76, 0.4)" }}
@@ -439,33 +518,9 @@ export default function ComboTrainer() {
         </div>
       </div>
 
-      {/* auto-gap stepper */}
-      <div className="flex items-center justify-center gap-3 px-4 pt-2">
-        <span
-          className="text-xs uppercase tracking-widest opacity-60"
-          style={anton}
-        >
-          Gap between combos
-        </span>
-        <button
-          onClick={() => changeGap(-1)}
-          className="h-9 w-9 rounded-full border-2 text-xl leading-none"
-          style={{ ...anton, borderColor: NAVY, color: NAVY }}
-          aria-label="Shorter gap"
-        >
-          −
-        </button>
-        <span className="w-9 text-center text-xl" style={anton}>
-          {gap}s
-        </span>
-        <button
-          onClick={() => changeGap(1)}
-          className="h-9 w-9 rounded-full border-2 text-xl leading-none"
-          style={{ ...anton, borderColor: NAVY, color: NAVY }}
-          aria-label="Longer gap"
-        >
-          +
-        </button>
+      {/* combo-gap stepper */}
+      <div className="px-4 pt-2">
+        <Stepper label="Gap between combos" value={gap} onChange={changeGap} />
       </div>
 
       {/* controls */}
@@ -479,7 +534,7 @@ export default function ComboTrainer() {
             const on = !voiceOn;
             setVoiceOn(on);
             if (!on) stopComboSpeech();
-            else speakCombo(reel.combos[idx]);
+            else if (phase === "run") speakCombo(reel.combos[idx]);
           }}
           className="flex-1 rounded-2xl border-2 py-4 text-lg"
           style={{
@@ -491,21 +546,31 @@ export default function ComboTrainer() {
         >
           {voiceOn ? "🔊 Voice on" : "🔇 Voice off"}
         </button>
-        <button
-          onClick={() => {
-            unlockComboAudio();
-            setAutoOn(!autoOn);
-          }}
-          className="flex-1 rounded-2xl border-2 py-4 text-lg"
-          style={{
-            ...anton,
-            background: autoOn ? RED : CARD,
-            borderColor: autoOn ? RED : NAVY,
-            color: autoOn ? CREAM : NAVY,
-          }}
-        >
-          {autoOn ? "❚❚ Auto on" : "▶ Auto"}
-        </button>
+        {mode === "cycle" ? (
+          <button
+            onClick={stopCycling}
+            className="flex-1 rounded-2xl border-2 py-4 text-lg"
+            style={{ ...anton, background: RED, borderColor: RED, color: CREAM }}
+          >
+            ■ Stop
+          </button>
+        ) : (
+          <button
+            onClick={() => {
+              unlockComboAudio();
+              setAutoOn(!autoOn);
+            }}
+            className="flex-1 rounded-2xl border-2 py-4 text-lg"
+            style={{
+              ...anton,
+              background: autoOn ? RED : CARD,
+              borderColor: autoOn ? RED : NAVY,
+              color: autoOn ? CREAM : NAVY,
+            }}
+          >
+            {autoOn ? "❚❚ Auto on" : "▶ Auto"}
+          </button>
+        )}
         <button
           onClick={() => {
             unlockComboAudio();
@@ -518,22 +583,120 @@ export default function ComboTrainer() {
         </button>
       </div>
 
-      {/* done banner */}
+      {/* START overlay — glove-up time before anything plays */}
+      {phase === "ready" && (
+        <div
+          className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-5 px-8"
+          style={{ background: "rgba(242, 236, 216, 0.97)" }}
+        >
+          <div
+            className="text-4xl uppercase"
+            style={{ ...anton, color: NAVY }}
+          >
+            {reelTag}
+          </div>
+          <div className="text-base font-semibold opacity-60">
+            {reel.combos.length} combos
+            {mode === "cycle" ? " · rolls into new random reels" : ""}
+          </div>
+          <button
+            onClick={pressStart}
+            className="w-full max-w-xs rounded-2xl py-6 text-3xl uppercase tracking-wide"
+            style={{ ...anton, background: RED, color: CREAM, boxShadow: SHADOW }}
+          >
+            Start
+          </button>
+          <Stepper
+            label="Countdown"
+            value={startGap}
+            onChange={changeStartGap}
+          />
+          {mode === "cycle" && (
+            <Stepper
+              label="Between reels"
+              value={betweenGap}
+              onChange={changeBetweenGap}
+            />
+          )}
+          <button
+            onClick={exitReel}
+            className="mt-1 text-base uppercase"
+            style={{ ...anton, color: "rgba(30, 58, 76, 0.55)" }}
+          >
+            ❮ Back to reels
+          </button>
+        </div>
+      )}
+
+      {/* get-ready countdown */}
+      {phase === "countdown" && (
+        <div
+          className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 px-8"
+          style={{ background: "rgba(242, 236, 216, 0.97)" }}
+        >
+          <div
+            className="text-2xl uppercase tracking-widest"
+            style={{ ...anton, color: RED }}
+          >
+            Get ready
+          </div>
+          <div
+            className="leading-none"
+            style={{ ...anton, color: NAVY, fontSize: "min(45vw, 260px)" }}
+          >
+            {count}
+          </div>
+          <div className="text-xl uppercase opacity-60" style={anton}>
+            {reelTag}
+          </div>
+        </div>
+      )}
+
+      {/* short countdown between random reels */}
+      {phase === "between" && (
+        <div
+          className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 px-8"
+          style={{ background: "rgba(242, 236, 216, 0.97)" }}
+        >
+          <div
+            className="text-2xl uppercase tracking-widest"
+            style={{ ...anton, color: RED }}
+          >
+            Up next
+          </div>
+          <div className="text-3xl uppercase" style={{ ...anton, color: NAVY }}>
+            {reelTag}
+          </div>
+          <div
+            className="leading-none"
+            style={{ ...anton, color: NAVY, fontSize: "min(38vw, 220px)" }}
+          >
+            {count}
+          </div>
+          <button
+            onClick={stopCycling}
+            className="mt-3 w-full max-w-xs rounded-2xl py-4 text-xl uppercase"
+            style={{ ...anton, background: RED, color: CREAM, boxShadow: SHADOW }}
+          >
+            ■ Stop cycling
+          </button>
+        </div>
+      )}
+
+      {/* done banner — manual mode only (cycle mode rolls on) */}
       {done && (
         <div
           className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 px-8"
           style={{ background: "rgba(242, 236, 216, 0.96)" }}
         >
-          <div
-            className="text-5xl uppercase"
-            style={{ ...anton, color: RED }}
-          >
+          <div className="text-5xl uppercase" style={{ ...anton, color: RED }}>
             Reel done 🥊
           </div>
           <button
             onClick={() => {
               setDone(false);
               setIdx(0);
+              setPhase("ready");
             }}
             className="w-full max-w-xs rounded-2xl py-5 text-xl uppercase"
             style={{ ...anton, background: RED, color: CREAM, boxShadow: SHADOW }}
@@ -542,13 +705,12 @@ export default function ComboTrainer() {
           </button>
           <button
             onClick={() => {
-              if (matches.length)
-                startReel(matches[Math.floor(Math.random() * matches.length)]);
+              if (matches.length) startReel(randomFrom(matches), "cycle");
             }}
             className="w-full max-w-xs rounded-2xl py-5 text-xl uppercase"
             style={{ ...anton, background: NAVY, color: CREAM, boxShadow: SHADOW }}
           >
-            Next random reel
+            Random reels
           </button>
           <button
             onClick={exitReel}
